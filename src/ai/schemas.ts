@@ -72,6 +72,17 @@ export const progressAnalysisSchema = z.object({
 });
 export type ProgressAnalysis = z.infer<typeof progressAnalysisSchema>;
 
+/**
+ * Structured detection of whether a chat message is asking to CHANGE today's
+ * workout plan, and if so which muscle groups the user wants. Muscle values are
+ * strictly re-validated against MUSCLE_GROUPS in the service before use.
+ */
+export const planModificationSchema = z.object({
+  isModification: z.boolean(),
+  muscleGroups: z.array(z.string()).max(6).default([]),
+});
+export type PlanModification = z.infer<typeof planModificationSchema>;
+
 /** Gemini responseSchema equivalents (Type-based) for structured output. */
 export const geminiSchemas = {
   workoutRecommendation: {
@@ -155,5 +166,13 @@ export const geminiSchemas = {
       suggestions: { type: 'array', items: { type: 'string' } },
     },
     required: ['summary'],
+  },
+  planModification: {
+    type: 'object',
+    properties: {
+      isModification: { type: 'boolean' },
+      muscleGroups: { type: 'array', items: { type: 'string' } },
+    },
+    required: ['isModification'],
   },
 } as const;

@@ -6,6 +6,12 @@ import { commonSchemas } from '../middleware/validate.js';
 export const foodLogUpsertSchema = z.object({
   dateKey: commonSchemas.dateKey,
   mealType: z.enum(MEAL_TYPES),
+  // Stable id + label for a user-defined meal (used with mealType 'custom').
+  // mealId is the durable association (survives meal renames); mealName is the
+  // label at log time. Both optional/nullable so existing historical logs
+  // (which lack them) remain valid and unaffected.
+  mealId: z.string().min(1).max(80).nullable().optional(),
+  mealName: z.string().min(1).max(60).nullable().optional(),
   name: z.string().min(1).max(120),
   foodId: z.string().max(200).nullable().optional(),
   servingSize: z.string().max(80).default('1 serving'),

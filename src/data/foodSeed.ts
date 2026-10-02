@@ -53,6 +53,26 @@ export const FOODS: FoodItem[] = [
   f({ id: 'avocado-half', name: 'Avocado (half)', servingSize: '1/2 (100 g)', servingGrams: 100, calories: 160, protein: 2, carbs: 9, fat: 15, fiber: 7, sugar: 0.7, sodium: 7, keywords: ['avocado', 'fat', 'fruit'] }),
   f({ id: 'lentils-cooked-100g', name: 'Lentils (cooked)', servingSize: '100 g', servingGrams: 100, calories: 116, protein: 9, carbs: 20, fat: 0.4, fiber: 8, sugar: 1.8, sodium: 2, keywords: ['lentils', 'legumes', 'protein', 'fiber', 'vegetarian'] }),
   f({ id: 'tofu-100g', name: 'Tofu (firm)', servingSize: '100 g', servingGrams: 100, calories: 144, protein: 15, carbs: 3, fat: 9, fiber: 2, sugar: 0.6, sodium: 14, keywords: ['tofu', 'soy', 'protein', 'vegetarian', 'vegan'] }),
+
+  // --- Indian & commonly-used foods ---
+  // Per-serving values follow the existing convention (one serving as described
+  // by servingSize). Keywords include common Indian aliases/spellings so search
+  // matches e.g. "roti"/"chapati", "dahi"/"curd", "chole"/"chana".
+  f({ id: 'samosa-1', name: 'Samosa', servingSize: '1 piece (60 g)', servingGrams: 60, calories: 160, protein: 3.5, carbs: 18, fat: 8.5, fiber: 1.6, sugar: 1, sodium: 220, keywords: ['samosa', 'snack', 'fried', 'indian'] }),
+  f({ id: 'paneer-100g', name: 'Paneer', servingSize: '100 g', servingGrams: 100, calories: 265, protein: 18, carbs: 3.4, fat: 20, fiber: 0, sugar: 2.6, sodium: 22, keywords: ['paneer', 'cottage cheese', 'cheese', 'dairy', 'protein', 'vegetarian', 'indian'] }),
+  f({ id: 'roti-1', name: 'Roti / Chapati', servingSize: '1 medium (40 g)', servingGrams: 40, calories: 104, protein: 3, carbs: 20, fat: 1.5, fiber: 2.5, sugar: 0.5, sodium: 95, keywords: ['roti', 'chapati', 'chapathi', 'phulka', 'wheat', 'flatbread', 'indian'] }),
+  f({ id: 'paratha-1', name: 'Paratha (plain)', servingSize: '1 piece (60 g)', servingGrams: 60, calories: 180, protein: 4, carbs: 25, fat: 7, fiber: 2.5, sugar: 0.6, sodium: 180, keywords: ['paratha', 'parantha', 'flatbread', 'indian'] }),
+  f({ id: 'dal-cooked-100g', name: 'Dal (cooked)', servingSize: '100 g (1 small bowl)', servingGrams: 100, calories: 116, protein: 7, carbs: 18, fat: 1.5, fiber: 4, sugar: 1.5, sodium: 240, keywords: ['dal', 'daal', 'dhal', 'lentils', 'tadka', 'protein', 'vegetarian', 'indian'] }),
+  f({ id: 'rajma-cooked-100g', name: 'Rajma (cooked)', servingSize: '100 g', servingGrams: 100, calories: 127, protein: 8.7, carbs: 22, fat: 0.5, fiber: 6.4, sugar: 0.3, sodium: 240, keywords: ['rajma', 'kidney beans', 'beans', 'protein', 'vegetarian', 'indian'] }),
+  f({ id: 'chole-cooked-100g', name: 'Chole / Chana (cooked)', servingSize: '100 g', servingGrams: 100, calories: 164, protein: 8.9, carbs: 27, fat: 2.6, fiber: 7.6, sugar: 4.8, sodium: 240, keywords: ['chole', 'chana', 'chickpeas', 'garbanzo', 'protein', 'vegetarian', 'indian'] }),
+  f({ id: 'poha-100g', name: 'Poha (cooked)', servingSize: '100 g (1 bowl)', servingGrams: 100, calories: 130, protein: 2.6, carbs: 27, fat: 1.5, fiber: 1.2, sugar: 1, sodium: 180, keywords: ['poha', 'flattened rice', 'breakfast', 'indian'] }),
+  f({ id: 'upma-100g', name: 'Upma (cooked)', servingSize: '100 g (1 bowl)', servingGrams: 100, calories: 150, protein: 3.5, carbs: 24, fat: 4.5, fiber: 1.5, sugar: 1, sodium: 220, keywords: ['upma', 'uppma', 'semolina', 'rava', 'breakfast', 'indian'] }),
+  f({ id: 'idli-1', name: 'Idli', servingSize: '1 piece (40 g)', servingGrams: 40, calories: 58, protein: 1.6, carbs: 12, fat: 0.4, fiber: 0.6, sugar: 0.2, sodium: 110, keywords: ['idli', 'idly', 'steamed', 'breakfast', 'south indian', 'indian'] }),
+  f({ id: 'dosa-1', name: 'Dosa (plain)', servingSize: '1 piece (80 g)', servingGrams: 80, calories: 133, protein: 2.7, carbs: 20, fat: 4.5, fiber: 1, sugar: 0.5, sodium: 200, keywords: ['dosa', 'dosai', 'south indian', 'breakfast', 'indian'] }),
+  f({ id: 'curd-100g', name: 'Curd / Dahi (plain)', servingSize: '100 g', servingGrams: 100, calories: 60, protein: 3.5, carbs: 4.7, fat: 3.3, fiber: 0, sugar: 4.7, sodium: 46, keywords: ['curd', 'dahi', 'yogurt', 'dairy', 'indian'] }),
+  f({ id: 'sprouts-100g', name: 'Moong sprouts', servingSize: '100 g', servingGrams: 100, calories: 30, protein: 3, carbs: 6, fat: 0.2, fiber: 1.8, sugar: 4.1, sodium: 6, keywords: ['sprouts', 'moong', 'mung', 'beans', 'salad', 'vegetarian', 'indian'] }),
+  f({ id: 'chicken-curry-100g', name: 'Chicken curry', servingSize: '100 g', servingGrams: 100, calories: 180, protein: 15, carbs: 4, fat: 11, fiber: 1, sugar: 2, sodium: 350, keywords: ['chicken curry', 'chicken', 'curry', 'indian', 'protein'] }),
+  f({ id: 'orange-medium', name: 'Orange (medium)', servingSize: '1 medium (131 g)', servingGrams: 131, calories: 62, protein: 1.2, carbs: 15, fat: 0.2, fiber: 3.1, sugar: 12, sodium: 0, keywords: ['orange', 'fruit', 'citrus'] }),
 ];
 
 export const FOOD_COUNT = FOODS.length;

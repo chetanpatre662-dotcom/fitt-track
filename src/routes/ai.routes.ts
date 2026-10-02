@@ -9,6 +9,11 @@ import {
   substitutionRequestSchema,
   workoutRecoSchema,
 } from '../validators/aiValidators.js';
+import {
+  dailyPlanGenerateSchema,
+  dailyPlanQuerySchema,
+  dailyPlanUpdateSchema,
+} from '../validators/dailyPlanValidators.js';
 import * as c from '../controllers/aiController.js';
 
 const router = Router();
@@ -25,5 +30,10 @@ router.post('/exercise-substitution', validate({ body: substitutionRequestSchema
 router.post('/recovery', asyncHandler(c.recovery));
 router.post('/progress-analysis', asyncHandler(c.progressAnalysis));
 router.post('/chat', validate({ body: chatSchema }), asyncHandler(c.chat));
+
+// --- Daily plan: the single source of truth for "today's workout" ---
+router.get('/daily-plan', validate({ query: dailyPlanQuerySchema }), asyncHandler(c.getDailyPlan));
+router.post('/daily-plan/generate', validate({ body: dailyPlanGenerateSchema }), asyncHandler(c.generateDailyPlan));
+router.put('/daily-plan', validate({ body: dailyPlanUpdateSchema }), asyncHandler(c.updateDailyPlan));
 
 export default router;

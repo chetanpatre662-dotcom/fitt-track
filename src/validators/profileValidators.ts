@@ -61,6 +61,20 @@ export const profileUpsertSchema = z.object({
   lifestyle: lifestyleSchema,
   targets: targetsSchema.optional(),
   units: z.enum(['metric', 'imperial']).default('metric'),
+  // User-defined nutrition meals (e.g. "Pre-workout", "Evening snack").
+  // Each has a STABLE id so renaming only changes `name` and existing food
+  // logs (tagged with the meal's id) stay associated. Optional + backward
+  // compatible: a legacy string[] form is also accepted (coerced to {id,name}).
+  // Built-in meals (breakfast/lunch/dinner/snack) are not stored here.
+  customMeals: z
+    .array(
+      z.union([
+        z.object({ id: z.string().min(1).max(80), name: z.string().min(1).max(60) }),
+        z.string().min(1).max(60),
+      ]),
+    )
+    .max(20)
+    .optional(),
 });
 
 export type ProfileUpsertInput = z.infer<typeof profileUpsertSchema>;
