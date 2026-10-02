@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.geminiSchemas = exports.progressAnalysisSchema = exports.recoverySchema = exports.substitutionSchema = exports.dailyInsightSchema = exports.nutritionRecommendationSchema = exports.workoutRecommendationSchema = void 0;
+exports.geminiSchemas = exports.planModificationSchema = exports.progressAnalysisSchema = exports.recoverySchema = exports.substitutionSchema = exports.dailyInsightSchema = exports.nutritionRecommendationSchema = exports.workoutRecommendationSchema = void 0;
 const zod_1 = require("zod");
 /** Zod schemas validating Gemini JSON responses before returning to Flutter. */
 exports.workoutRecommendationSchema = zod_1.z.object({
@@ -54,6 +54,15 @@ exports.progressAnalysisSchema = zod_1.z.object({
     summary: zod_1.z.string(),
     highlights: zod_1.z.array(zod_1.z.string()).max(6).default([]),
     suggestions: zod_1.z.array(zod_1.z.string()).max(6).default([]),
+});
+/**
+ * Structured detection of whether a chat message is asking to CHANGE today's
+ * workout plan, and if so which muscle groups the user wants. Muscle values are
+ * strictly re-validated against MUSCLE_GROUPS in the service before use.
+ */
+exports.planModificationSchema = zod_1.z.object({
+    isModification: zod_1.z.boolean(),
+    muscleGroups: zod_1.z.array(zod_1.z.string()).max(6).default([]),
 });
 /** Gemini responseSchema equivalents (Type-based) for structured output. */
 exports.geminiSchemas = {
@@ -138,6 +147,14 @@ exports.geminiSchemas = {
             suggestions: { type: 'array', items: { type: 'string' } },
         },
         required: ['summary'],
+    },
+    planModification: {
+        type: 'object',
+        properties: {
+            isModification: { type: 'boolean' },
+            muscleGroups: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['isModification'],
     },
 };
 //# sourceMappingURL=schemas.js.map

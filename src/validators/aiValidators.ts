@@ -22,6 +22,11 @@ export const substitutionRequestSchema = z.object({
   exerciseId: z.string().min(1).max(200),
 });
 
+/** Path param for fetching a single conversation's messages. */
+export const conversationIdParamsSchema = z.object({
+  id: z.string().min(1).max(200),
+});
+
 export type ChatInput = z.infer<typeof chatSchema>;
 export type WorkoutRecoInput = z.infer<typeof workoutRecoSchema>;
 export type GenerateWorkoutInput = z.infer<typeof generateWorkoutSchema>;

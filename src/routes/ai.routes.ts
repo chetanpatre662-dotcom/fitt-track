@@ -5,6 +5,7 @@ import { aiLimiter } from '../middleware/rateLimit.js';
 import { asyncHandler } from '../utils/http.js';
 import {
   chatSchema,
+  conversationIdParamsSchema,
   generateWorkoutSchema,
   substitutionRequestSchema,
   workoutRecoSchema,
@@ -30,6 +31,14 @@ router.post('/exercise-substitution', validate({ body: substitutionRequestSchema
 router.post('/recovery', asyncHandler(c.recovery));
 router.post('/progress-analysis', asyncHandler(c.progressAnalysis));
 router.post('/chat', validate({ body: chatSchema }), asyncHandler(c.chat));
+
+// --- AI chat history (owner-scoped; reuses existing aiConversations) ---
+router.get('/conversations', asyncHandler(c.listConversations));
+router.get(
+  '/conversations/:id/messages',
+  validate({ params: conversationIdParamsSchema }),
+  asyncHandler(c.getConversationMessages),
+);
 
 // --- Daily plan: the single source of truth for "today's workout" ---
 router.get('/daily-plan', validate({ query: dailyPlanQuerySchema }), asyncHandler(c.getDailyPlan));

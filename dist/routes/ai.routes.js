@@ -39,6 +39,7 @@ const validate_js_1 = require("../middleware/validate.js");
 const rateLimit_js_1 = require("../middleware/rateLimit.js");
 const http_js_1 = require("../utils/http.js");
 const aiValidators_js_1 = require("../validators/aiValidators.js");
+const dailyPlanValidators_js_1 = require("../validators/dailyPlanValidators.js");
 const c = __importStar(require("../controllers/aiController.js"));
 const router = (0, express_1.Router)();
 // AI routes require auth and use a stricter rate limit (Gemini calls cost).
@@ -52,5 +53,12 @@ router.post('/exercise-substitution', (0, validate_js_1.validate)({ body: aiVali
 router.post('/recovery', (0, http_js_1.asyncHandler)(c.recovery));
 router.post('/progress-analysis', (0, http_js_1.asyncHandler)(c.progressAnalysis));
 router.post('/chat', (0, validate_js_1.validate)({ body: aiValidators_js_1.chatSchema }), (0, http_js_1.asyncHandler)(c.chat));
+// --- AI chat history (owner-scoped; reuses existing aiConversations) ---
+router.get('/conversations', (0, http_js_1.asyncHandler)(c.listConversations));
+router.get('/conversations/:id/messages', (0, validate_js_1.validate)({ params: aiValidators_js_1.conversationIdParamsSchema }), (0, http_js_1.asyncHandler)(c.getConversationMessages));
+// --- Daily plan: the single source of truth for "today's workout" ---
+router.get('/daily-plan', (0, validate_js_1.validate)({ query: dailyPlanValidators_js_1.dailyPlanQuerySchema }), (0, http_js_1.asyncHandler)(c.getDailyPlan));
+router.post('/daily-plan/generate', (0, validate_js_1.validate)({ body: dailyPlanValidators_js_1.dailyPlanGenerateSchema }), (0, http_js_1.asyncHandler)(c.generateDailyPlan));
+router.put('/daily-plan', (0, validate_js_1.validate)({ body: dailyPlanValidators_js_1.dailyPlanUpdateSchema }), (0, http_js_1.asyncHandler)(c.updateDailyPlan));
 exports.default = router;
 //# sourceMappingURL=ai.routes.js.map

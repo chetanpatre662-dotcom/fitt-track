@@ -3,6 +3,7 @@ import { requireUid } from '../middleware/auth.js';
 import { aiService } from '../services/aiService.js';
 import { dailyPlanService } from '../services/dailyPlanService.js';
 import { aiConversationRepository } from '../repositories/aiConversationRepository.js';
+import { aiConversationService } from '../services/aiConversationService.js';
 import { ok } from '../utils/http.js';
 import type {
   ChatInput,
@@ -88,6 +89,21 @@ export async function chat(req: Request, res: Response): Promise<void> {
   await aiConversationRepository.addMessage(uid, convId, 'assistant', reply).catch(() => {});
 
   ok(res, { conversationId: convId, reply, proposedPlanChange });
+}
+
+// --- AI chat history (reuses the existing aiConversations persistence) ---
+
+export async function listConversations(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const conversations = await aiConversationService.listConversations(uid);
+  ok(res, { conversations });
+}
+
+export async function getConversationMessages(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const { id } = req.params as { id: string };
+  const messages = await aiConversationService.getMessages(uid, id);
+  ok(res, { messages });
 }
 
 // --- Daily plan (single source of truth for "today's workout") ---

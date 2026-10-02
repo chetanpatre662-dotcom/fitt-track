@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.substitutionRequestSchema = exports.generateWorkoutSchema = exports.workoutRecoSchema = exports.chatSchema = void 0;
+exports.conversationIdParamsSchema = exports.substitutionRequestSchema = exports.generateWorkoutSchema = exports.workoutRecoSchema = exports.chatSchema = void 0;
 const zod_1 = require("zod");
 const domain_js_1 = require("../models/domain.js");
 exports.chatSchema = zod_1.z.object({
@@ -19,5 +19,9 @@ exports.generateWorkoutSchema = zod_1.z.object({
 });
 exports.substitutionRequestSchema = zod_1.z.object({
     exerciseId: zod_1.z.string().min(1).max(200),
+});
+/** Path param for fetching a single conversation's messages. */
+exports.conversationIdParamsSchema = zod_1.z.object({
+    id: zod_1.z.string().min(1).max(200),
 });
 //# sourceMappingURL=aiValidators.js.map

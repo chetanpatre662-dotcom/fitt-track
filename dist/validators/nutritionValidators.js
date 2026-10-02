@@ -8,6 +8,12 @@ const validate_js_1 = require("../middleware/validate.js");
 exports.foodLogUpsertSchema = zod_1.z.object({
     dateKey: validate_js_1.commonSchemas.dateKey,
     mealType: zod_1.z.enum(domain_js_1.MEAL_TYPES),
+    // Stable id + label for a user-defined meal (used with mealType 'custom').
+    // mealId is the durable association (survives meal renames); mealName is the
+    // label at log time. Both optional/nullable so existing historical logs
+    // (which lack them) remain valid and unaffected.
+    mealId: zod_1.z.string().min(1).max(80).nullable().optional(),
+    mealName: zod_1.z.string().min(1).max(60).nullable().optional(),
     name: zod_1.z.string().min(1).max(120),
     foodId: zod_1.z.string().max(200).nullable().optional(),
     servingSize: zod_1.z.string().max(80).default('1 serving'),

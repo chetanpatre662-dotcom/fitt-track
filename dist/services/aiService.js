@@ -5,6 +5,7 @@ const geminiClient_js_1 = require("../ai/geminiClient.js");
 const validateExerciseIds_js_1 = require("../ai/validateExerciseIds.js");
 const prompts_js_1 = require("../ai/prompts.js");
 const schemas_js_1 = require("../ai/schemas.js");
+const domain_js_1 = require("../models/domain.js");
 const aiContextService_js_1 = require("./aiContextService.js");
 const exerciseService_js_1 = require("./exerciseService.js");
 const logger_js_1 = require("../utils/logger.js");
@@ -208,8 +209,15 @@ class AiService {
             };
         }
     }
-    /** Free-form chat with the user's compact context. Returns plain text. */
-    async chat(uid, message, history = []) {
+    /**
+     * Free-form chat with the user's compact context. Returns plain text.
+     *
+     * [todaysPlan] is a compact summary of the SINGLE persisted daily workout
+     * plan (see dailyPlanService). When present, the coach must reference THAT
+     * plan for "what should I train today?" rather than inventing a new one, so
+     * Chat and the Plans screen never disagree.
+     */
+    async chat(uid, message, history = [], todaysPlan) {
         const [user, workouts, nutrition] = await Promise.all([
             aiContextService_js_1.aiContextService.userContext(uid),
             aiContextService_js_1.aiContextService.recentWorkouts(uid, 3),
@@ -223,13 +231,56 @@ class AiService {
             (0, prompts_js_1.contextBlock)('USER', user),
             (0, prompts_js_1.contextBlock)('RECENT_WORKOUTS', workouts),
             (0, prompts_js_1.contextBlock)('TODAY_NUTRITION', nutrition),
+            todaysPlan
+                ? `TODAYS_WORKOUT_PLAN (the single source of truth — reference THIS plan for "what should I train today"; do not invent a different workout):\n${todaysPlan}`
+                : 'TODAYS_WORKOUT_PLAN: none yet. If the user asks what to train, you may propose one; the app will save it as today\'s plan.',
             historyText ? `CONVERSATION SO FAR:\n${historyText}` : '',
             `User: ${message}`,
-            'Reply helpfully and concisely as their coach.',
+            'Reply helpfully and concisely as their coach. If a workout plan exists above, base any training answer on it.',
         ]
             .filter(Boolean)
             .join('\n\n');
         return (0, geminiClient_js_1.generateText)({ systemInstruction: prompts_js_1.SAFETY_SYSTEM_PROMPT, prompt, temperature: 0.85 });
+    }
+    /**
+     * Detects whether a chat message is asking to CHANGE today's workout plan and,
+     * if so, which muscle groups the user wants. Uses structured JSON output and
+     * strictly re-validates the muscle groups against MUSCLE_GROUPS, so the result
+     * is safe to turn into a confirmable proposal (never silently applied).
+     *
+     * Returns { isModification: false } on any ambiguity or AI error — i.e. it
+     * fails safe toward "not a modification" so normal chat is never disrupted.
+     */
+    async detectPlanModification(message, currentMuscleGroups = []) {
+        const allowed = domain_js_1.MUSCLE_GROUPS.join(', ');
+        const prompt = [
+            'Decide if the user is asking to CHANGE/replace today\'s workout plan (the muscle groups to train).',
+            'Examples of modification: "only back and biceps", "remove chest add shoulders", "make today legs only".',
+            'Examples that are NOT modification: "what should I train today?", "how many sets?", "is this plan good?".',
+            `The ONLY valid muscle group values are: ${allowed}. Map the user's words to these (e.g. "abs"->core).`,
+            `CURRENT_PLAN_MUSCLES: ${currentMuscleGroups.join(', ') || '(none)'}`,
+            `User message: ${message}`,
+            'Return JSON: { "isModification": boolean, "muscleGroups": string[] } where muscleGroups is the FULL desired set after the change (only used when isModification is true).',
+        ].join('\n\n');
+        try {
+            const raw = await (0, geminiClient_js_1.generateJson)({
+                systemInstruction: prompts_js_1.SAFETY_SYSTEM_PROMPT,
+                prompt,
+                responseSchema: schemas_js_1.geminiSchemas.planModification,
+                temperature: 0,
+            });
+            const parsed = schemas_js_1.planModificationSchema.parse(raw);
+            // Strictly keep only valid muscle groups; drop anything invented.
+            const valid = domain_js_1.MUSCLE_GROUPS;
+            const muscleGroups = [...new Set(parsed.muscleGroups)].filter((m) => valid.includes(m));
+            // Only a real modification if we have at least one valid target muscle.
+            const isModification = parsed.isModification && muscleGroups.length > 0;
+            return { isModification, muscleGroups };
+        }
+        catch (err) {
+            logger_js_1.logger.warn({ err }, 'detectPlanModification fallback (treating as non-modification)');
+            return { isModification: false, muscleGroups: [] };
+        }
     }
 }
 exports.AiService = AiService;
