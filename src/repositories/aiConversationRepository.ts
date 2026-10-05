@@ -60,22 +60,21 @@ export class AiConversationRepository {
     }> = [];
     for (const doc of snap.docs) {
       const data = doc.data() as Record<string, unknown>;
-      // First user message → conversation title (fallback to a generic label).
+      // First message → conversation title. We order ONLY by createdAt (covered
+      // by the existing messages (createdAt ASC) index) so this read never needs
+      // a composite index. The first message of a thread is always the user turn
+      // (aiController.chat persists 'user' then 'assistant'); if that first doc
+      // is somehow not a user turn, titleFromFirstMessage falls back to a label.
       const firstSnap = await doc.ref
         .collection('messages')
-        .where('role', '==', 'user')
         .orderBy('createdAt', 'asc')
         .limit(1)
         .get();
       const first = firstSnap.docs[0]?.data() as Record<string, unknown> | undefined;
       const countSnap = await doc.ref.collection('messages').count().get();
-      out.push({
-        id: doc.id,
-        title: titleFrom((first?.text as string) ?? ''),
-        createdAt: toIso(data.createdAt),
-        updatedAt: toIso(data.updatedAt),
-        messageCount: (countSnap.data().count as number) ?? 0,
-      });
+      out.push(
+        mapConversationSummary(doc.id, data, first, (countSnap.data().count as number) ?? 0),
+      );
     }
     return out;
   }
@@ -90,14 +89,7 @@ export class AiConversationRepository {
       .collection('messages')
       .orderBy('createdAt', 'asc')
       .get();
-    return snap.docs.map((d) => {
-      const m = d.data() as Record<string, unknown>;
-      return {
-        role: (m.role as string) ?? 'user',
-        text: (m.text as string) ?? '',
-        createdAt: toIso(m.createdAt),
-      };
-    });
+    return snap.docs.map((d) => mapMessage(d.data() as Record<string, unknown>));
   }
 
   /**
@@ -145,8 +137,57 @@ function titleFrom(text: string): string {
   return t.length > 60 ? `${t.slice(0, 57)}…` : t;
 }
 
+/**
+ * Derives the title from the conversation's first message. Only a 'user' turn
+ * produces a message-based title; any other role (or a missing/malformed first
+ * doc) falls back to the generic label. Pure — no Firestore access.
+ */
+export function titleFromFirstMessage(first: Record<string, unknown> | undefined): string {
+  const role = typeof first?.role === 'string' ? (first.role as string) : undefined;
+  const text = typeof first?.text === 'string' ? (first.text as string) : '';
+  if (role === 'user' && text.trim()) return titleFrom(text);
+  return titleFrom('');
+}
+
+/**
+ * Pure mapper: conversation doc data + its first message + message count → the
+ * summary DTO. Null/missing fields default safely and timestamps serialize via
+ * [toIso], so one malformed doc can never throw. Exposed for unit testing.
+ */
+export function mapConversationSummary(
+  id: string,
+  data: Record<string, unknown> | undefined,
+  first: Record<string, unknown> | undefined,
+  messageCount: number,
+): { id: string; title: string; createdAt: string | null; updatedAt: string | null; messageCount: number } {
+  const d = data ?? {};
+  const count = Number.isFinite(messageCount) ? Math.max(0, Math.trunc(messageCount)) : 0;
+  return {
+    id,
+    title: titleFromFirstMessage(first),
+    createdAt: toIso(d.createdAt),
+    updatedAt: toIso(d.updatedAt),
+    messageCount: count,
+  };
+}
+
+/**
+ * Pure mapper: a message doc's data → the message DTO. Defaults role/text and
+ * serializes createdAt defensively. Exposed for unit testing.
+ */
+export function mapMessage(
+  m: Record<string, unknown> | undefined,
+): { role: string; text: string; createdAt: string | null } {
+  const data = m ?? {};
+  return {
+    role: typeof data.role === 'string' ? (data.role as string) : 'user',
+    text: typeof data.text === 'string' ? (data.text as string) : '',
+    createdAt: toIso(data.createdAt),
+  };
+}
+
 /** Converts a Firestore Timestamp (or ISO string) to an ISO string, or null. */
-function toIso(value: unknown): string | null {
+export function toIso(value: unknown): string | null {
   if (!value) return null;
   if (value instanceof admin.firestore.Timestamp) return value.toDate().toISOString();
   if (typeof value === 'string') return value;
