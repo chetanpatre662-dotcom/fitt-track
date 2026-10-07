@@ -114,26 +114,33 @@ import { roleService } from '../services/roleService.js';
 
 const TRAINER = 'trainer-1';
 
-beforeEach(() => {
-  docs = new Map();
-  // Seed a trainer + referral code.
-  docs.set('trainers/trainer-1', {
-    trainerId: TRAINER,
-    name: 'Dream Physics',
-    referralCode: 'dreamphysics',
-    referralCodeLower: 'dreamphysics',
+/** Seeds a trainer + its active referral-code index doc. */
+function seedTrainer(id: string, name: string, code: string): void {
+  const lower = code.toLowerCase();
+  docs.set(`trainers/${id}`, {
+    trainerId: id,
+    name,
+    referralCode: code,
+    referralCodeLower: lower,
     status: 'active',
+    active: true,
     totalStudents: 0,
   });
-  docs.set('referralCodes/dreamphysics', { trainerId: TRAINER });
+  docs.set(`referralCodes/${lower}`, { trainerId: id, code, active: true });
+  docs.set(`users/${id}`, { role: 'trainer' });
+}
+
+beforeEach(() => {
+  docs = new Map();
+  seedTrainer(TRAINER, 'Alex Carter', 'FITCHE123');
 });
 
 describe('TrainerService.linkStudent', () => {
   it('links a valid code, creates the link, mirrors profile, increments once', async () => {
-    const res = await trainerService.linkStudent('stu-1', 'DreamPhysics');
+    const res = await trainerService.linkStudent('stu-1', 'FitChe123');
     expect(res.linked).toBe(true);
     expect(res.trainerId).toBe(TRAINER);
-    expect(res.trainerName).toBe('Dream Physics');
+    expect(res.trainerName).toBe('Alex Carter');
 
     expect(docs.get('trainerLinks/stu-1')).toMatchObject({ trainerId: TRAINER, status: 'active' });
     expect(docs.get('users/stu-1/profile/data')).toMatchObject({ trainerId: TRAINER });
@@ -141,7 +148,7 @@ describe('TrainerService.linkStudent', () => {
   });
 
   it('normalizes case/whitespace in the referral code', async () => {
-    const res = await trainerService.linkStudent('stu-2', '  DREAMPHYSICS  ');
+    const res = await trainerService.linkStudent('stu-2', '  FITCHE123  ');
     expect(res.linked).toBe(true);
     expect(docs.get('trainerLinks/stu-2')).toBeTruthy();
   });
@@ -153,17 +160,199 @@ describe('TrainerService.linkStudent', () => {
     expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(0);
   });
 
+  it('treats an inactive code as invalid', async () => {
+    docs.set('referralCodes/fitche123', { trainerId: TRAINER, code: 'FITCHE123', active: false });
+    const res = await trainerService.linkStudent('stu-x', 'FITCHE123');
+    expect(res).toEqual({ linked: false, reason: 'invalid_code' });
+  });
+
   it('is idempotent: re-linking the same trainer does not double count', async () => {
-    await trainerService.linkStudent('stu-4', 'dreamphysics');
-    await trainerService.linkStudent('stu-4', 'dreamphysics');
+    await trainerService.linkStudent('stu-4', 'FITCHE123');
+    const res = await trainerService.linkStudent('stu-4', 'FITCHE123');
+    expect(res).toMatchObject({ linked: true, alreadyLinked: true });
     expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(1);
   });
 
   it('rejects a trainer account trying to link as a student (409)', async () => {
     docs.set('users/trainer-x', { role: 'trainer' });
-    await expect(trainerService.linkStudent('trainer-x', 'dreamphysics')).rejects.toMatchObject({
+    await expect(trainerService.linkStudent('trainer-x', 'FITCHE123')).rejects.toMatchObject({
       statusCode: 409,
     });
+  });
+});
+
+describe('TrainerService.linkStudent one-active-trainer switch guard', () => {
+  beforeEach(() => {
+    seedTrainer('trainer-2', 'Bela Rao', 'GYMRAHUL45');
+  });
+
+  it('different trainer without confirm -> already_linked, NO write', async () => {
+    await trainerService.linkStudent('stu-s', 'FITCHE123');
+    const before = JSON.stringify(docs.get('trainerLinks/stu-s'));
+
+    const res = await trainerService.linkStudent('stu-s', 'GYMRAHUL45');
+    expect(res.linked).toBe(false);
+    expect(res.reason).toBe('already_linked');
+    expect(res.currentTrainer).toEqual({ trainerId: 'trainer-1', name: 'Alex Carter' });
+    expect(res.requestedTrainer).toEqual({ trainerId: 'trainer-2', name: 'Bela Rao' });
+    // Link untouched.
+    expect(JSON.stringify(docs.get('trainerLinks/stu-s'))).toBe(before);
+    expect(docs.get('trainerLinks/stu-s')).toMatchObject({ trainerId: 'trainer-1' });
+  });
+
+  it('confirmSwitch=true moves the link to B, no counter write, live counts A-1/B+1', async () => {
+    await trainerService.linkStudent('stu-s', 'FITCHE123');
+    const aCounterBefore = docs.get('trainers/trainer-1')?.totalStudents;
+    const bCounterBefore = docs.get('trainers/trainer-2')?.totalStudents;
+
+    const res = await trainerService.linkStudent('stu-s', 'GYMRAHUL45', { confirmSwitch: true });
+    expect(res).toMatchObject({ linked: true, switched: true, trainerId: 'trainer-2' });
+    expect(docs.get('trainerLinks/stu-s')).toMatchObject({ trainerId: 'trainer-2', status: 'active' });
+    expect(docs.get('users/stu-s/profile/data')).toMatchObject({ trainerId: 'trainer-2' });
+
+    // No stored-counter mutation by the switch.
+    expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(aCounterBefore);
+    expect(docs.get('trainers/trainer-2')?.totalStudents).toBe(bCounterBefore);
+
+    // Live counts reflect the move.
+    expect((await trainerService.getProfile('trainer-1')).totalStudents).toBe(0);
+    expect((await trainerService.getProfile('trainer-2')).totalStudents).toBe(1);
+  });
+
+  it('tolerates a null current-trainer name when A was removed', async () => {
+    await trainerService.linkStudent('stu-s', 'FITCHE123');
+    docs.delete('trainers/trainer-1');
+    docs.delete('users/trainer-1');
+
+    const res = await trainerService.linkStudent('stu-s', 'GYMRAHUL45');
+    expect(res.reason).toBe('already_linked');
+    expect(res.currentTrainer).toEqual({ trainerId: 'trainer-1', name: null });
+  });
+});
+
+describe('TrainerService referral-code lifecycle', () => {
+  const fixedCode = (c: string) => () => {
+    let i = 0;
+    const seq = c.split('');
+    return () => {
+      const ch = seq[i % seq.length];
+      i += 1;
+      return ch.charCodeAt(0) % 10;
+    };
+  };
+
+  it('claimReferralCode: first claim succeeds, other trainer blocked, same trainer no-op', async () => {
+    // First custom claim for trainer-1.
+    const saved = await trainerService.setCustomReferralCode(TRAINER, 'AlphaOne');
+    expect(saved).toBe('AlphaOne');
+    expect(docs.get('referralCodes/alphaone')).toMatchObject({ trainerId: TRAINER, active: true });
+    expect(docs.get('trainers/trainer-1')).toMatchObject({
+      referralCode: 'AlphaOne',
+      referralCodeLower: 'alphaone',
+    });
+    // Old code deactivated (not deleted).
+    expect(docs.get('referralCodes/fitche123')).toMatchObject({ active: false });
+
+    // A different trainer cannot claim AlphaOne -> 409.
+    seedTrainer('trainer-2', 'Bela Rao', 'GYMRAHUL45');
+    await expect(trainerService.setCustomReferralCode('trainer-2', 'AlphaOne')).rejects.toMatchObject({
+      statusCode: 409,
+    });
+
+    // Same trainer re-claiming their own current code is a no-op success.
+    const again = await trainerService.setCustomReferralCode(TRAINER, 'AlphaOne');
+    expect(again).toBe('AlphaOne');
+  });
+
+  it('setCustomReferralCode leaves trainerLinks untouched', async () => {
+    docs.set('trainerLinks/stu-1', { trainerId: TRAINER, status: 'active' });
+    const before = JSON.stringify(docs.get('trainerLinks/stu-1'));
+    await trainerService.setCustomReferralCode(TRAINER, 'BrandNew9');
+    expect(JSON.stringify(docs.get('trainerLinks/stu-1'))).toBe(before);
+  });
+
+  it('generateReferralCode: new code active, old deactivated, trainer updated, links untouched', async () => {
+    docs.set('trainerLinks/stu-1', { trainerId: TRAINER, status: 'active' });
+    const linkBefore = JSON.stringify(docs.get('trainerLinks/stu-1'));
+
+    const code = await trainerService.generateReferralCode(TRAINER);
+    expect(code).not.toBe('FITCHE123');
+    expect(docs.get(`referralCodes/${code.toLowerCase()}`)).toMatchObject({
+      trainerId: TRAINER,
+      active: true,
+    });
+    expect(docs.get('referralCodes/fitche123')).toMatchObject({ active: false });
+    expect(docs.get('trainers/trainer-1')).toMatchObject({ referralCode: code });
+    expect(JSON.stringify(docs.get('trainerLinks/stu-1'))).toBe(linkBefore);
+  });
+
+  it('generate retries past a collision and leaves the colliding code untouched', async () => {
+    // Pre-create a code owned by another trainer that the first candidate hits.
+    seedTrainer('trainer-2', 'Bela Rao', 'GYMRAHUL45');
+    const takenLower = 'fitaaaa';
+    docs.set(`referralCodes/${takenLower}`, { trainerId: 'trainer-2', code: 'FITAAAA', active: true });
+    const takenBefore = JSON.stringify(docs.get(`referralCodes/${takenLower}`));
+
+    // RNG forces the FIRST candidate to be FITAAAA (collision), then a real one.
+    let call = 0;
+    const rng = (max: number): number => {
+      call += 1;
+      // calls 1..5 build the first candidate FIT + AAAA (indices 0).
+      if (call <= 5) return 0;
+      // subsequent candidate: prefix index 1 (TRN) then non-zero suffix.
+      if (call === 6) return 1;
+      return 2;
+    };
+    const code = await trainerService.generateReferralCode(TRAINER, rng);
+    expect(code).not.toBe('FITAAAA');
+    // The colliding (other trainer's) code is untouched by the aborted attempt.
+    expect(JSON.stringify(docs.get(`referralCodes/${takenLower}`))).toBe(takenBefore);
+    // Our old code is deactivated by the successful attempt only.
+    expect(docs.get('referralCodes/fitche123')).toMatchObject({ active: false });
+  });
+
+  it('checkAvailability: available / taken-by-other / reserved / invalid', async () => {
+    seedTrainer('trainer-2', 'Bela Rao', 'GYMRAHUL45');
+
+    expect(await trainerService.checkAvailability('FreshCode', TRAINER)).toEqual({ available: true });
+    // Owned by another trainer -> taken.
+    expect(await trainerService.checkAvailability('GYMRAHUL45', TRAINER)).toEqual({
+      available: false,
+      reason: 'taken',
+    });
+    // The trainer's own code is available to themselves.
+    expect(await trainerService.checkAvailability('FITCHE123', TRAINER)).toEqual({ available: true });
+    // Reserved word.
+    expect(await trainerService.checkAvailability('dreamphysics', TRAINER)).toEqual({
+      available: false,
+      reason: 'reserved',
+    });
+    // Invalid format (too short / symbol).
+    expect(await trainerService.checkAvailability('a b', TRAINER)).toEqual({
+      available: false,
+      reason: 'invalid',
+    });
+  });
+
+  it('taken-by-other is unavailable even when the other trainer deactivated it', async () => {
+    seedTrainer('trainer-2', 'Bela Rao', 'GYMRAHUL45');
+    docs.set('referralCodes/gymrahul45', { trainerId: 'trainer-2', code: 'GYMRAHUL45', active: false });
+    expect(await trainerService.checkAvailability('GYMRAHUL45', TRAINER)).toEqual({
+      available: false,
+      reason: 'taken',
+    });
+  });
+
+  it('ensureTrainerAccount is idempotent: no duplicate trainer or second code', async () => {
+    const first = await trainerService.ensureTrainerAccount('new-trainer', { name: 'Coach Zoe' });
+    expect(first.trainerId).toBe('new-trainer');
+    expect(first.referralCode).toBeTruthy();
+    expect(docs.get('users/new-trainer')).toMatchObject({ role: 'trainer' });
+    expect(docs.get('trainers/new-trainer')).toMatchObject({ status: 'active', active: true });
+
+    const second = await trainerService.ensureTrainerAccount('new-trainer', { name: 'Coach Zoe' });
+    expect(second.referralCode).toBe(first.referralCode);
+    void fixedCode; // reserved for future deterministic use
   });
 });
 

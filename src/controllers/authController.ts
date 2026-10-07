@@ -3,7 +3,7 @@ import { requireUid } from '../middleware/auth.js';
 import { authService } from '../services/authService.js';
 import { trainerService } from '../services/trainerService.js';
 import { ok } from '../utils/http.js';
-import type { LinkTrainerInput } from '../validators/trainerValidators.js';
+import type { LinkTrainerInput, RegisterTrainerInput } from '../validators/trainerValidators.js';
 
 /**
  * POST /api/auth/verify
@@ -30,8 +30,26 @@ export async function verify(req: Request, res: Response): Promise<void> {
  */
 export async function linkTrainer(req: Request, res: Response): Promise<void> {
   const uid = requireUid(req);
-  const { referralCode } = req.body as LinkTrainerInput;
-  const result = await trainerService.linkStudent(uid, referralCode);
+  const { referralCode, confirmSwitch } = req.body as LinkTrainerInput;
+  const result = await trainerService.linkStudent(uid, referralCode, { confirmSwitch });
+  ok(res, result);
+}
+
+/**
+ * POST /api/auth/register-trainer
+ * Promotes the authenticated (just-created) Firebase user to a trainer: sets
+ * the role server-side, creates the trainer record, and assigns a generated
+ * unique referral code. Idempotent — a re-call never creates a duplicate
+ * trainer or a second code. The role is NEVER taken from the client.
+ */
+export async function registerTrainer(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const { name } = req.body as RegisterTrainerInput;
+  const result = await trainerService.ensureTrainerAccount(uid, {
+    name,
+    email: req.auth?.email ?? null,
+    photoUrl: req.auth?.picture ?? null,
+  });
   ok(res, result);
 }
 

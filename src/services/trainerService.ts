@@ -9,15 +9,46 @@ import { progressService, type RangeKey } from './progressService.js';
 import { progressPhotoService } from './progressPhotoService.js';
 import { roleService } from './roleService.js';
 import { assertTrainerOwnsStudent } from '../middleware/role.js';
-import { ConflictError } from '../utils/errors.js';
+import { ConflictError, BadRequestError, ServiceUnavailableError } from '../utils/errors.js';
+import { generateCandidate, normalize, type Rng } from '../utils/referralCode.js';
+import { referralCodeSchema, availabilityQuerySchema } from '../validators/trainerValidators.js';
 
-/** Result of a referral-link attempt. */
+/** A trainer reference used in connect/switch responses. */
+export interface TrainerRef {
+  trainerId: string;
+  name: string | null;
+}
+
+/** Result of a referral-link / connect attempt. */
 export interface LinkResult {
   linked: boolean;
-  reason?: 'invalid_code';
+  reason?: 'invalid_code' | 'already_linked';
   trainerId?: string;
   trainerName?: string;
+  /** True when the student was already linked to this same trainer. */
+  alreadyLinked?: boolean;
+  /** True when an existing link was moved to a new trainer (confirmed switch). */
+  switched?: boolean;
+  /** Present only on an `already_linked` outcome. */
+  currentTrainer?: TrainerRef;
+  requestedTrainer?: TrainerRef;
 }
+
+/** The trainer's current referral code. */
+export interface ReferralCodeInfo {
+  code: string | null;
+  active: boolean;
+  referralCodeUpdatedAt: string | null;
+}
+
+/** Availability-check outcome for a desired custom code. */
+export interface AvailabilityResult {
+  available: boolean;
+  reason?: 'taken' | 'reserved' | 'invalid';
+}
+
+/** Max generated-code candidate attempts before giving up (collisions). */
+const MAX_CODE_ATTEMPTS = 5;
 
 /**
  * Trainer-side business logic: student linking, trainer profile/dashboard, and
@@ -35,18 +66,71 @@ export class TrainerService {
    *   profile.trainerId, and increment the trainer's totalStudents EXACTLY
    *   once (idempotent: a re-link to the same trainer does not double count).
    */
-  async linkStudent(studentUid: string, referralCode: string): Promise<LinkResult> {
-    const codeLower = referralCode.trim().toLowerCase();
-    const trainerId = await trainerRepository.findTrainerIdByReferralCode(codeLower);
-    if (!trainerId) {
+  async linkStudent(
+    studentUid: string,
+    referralCode: string,
+    opts?: { confirmSwitch?: boolean },
+  ): Promise<LinkResult> {
+    const codeLower = normalize(referralCode);
+
+    // Resolve the code via the index doc so we can honor `active`.
+    const codeDoc = await trainerRepository.getByReferralCodeDoc(codeLower);
+    if (!codeDoc || !codeDoc.active) {
+      return { linked: false, reason: 'invalid_code' };
+    }
+    const trainerId = codeDoc.trainerId;
+
+    // Verify the resolved account is actually an active trainer; never link to
+    // a non-trainer. "unknown code" and "not a trainer" are indistinguishable
+    // to the caller (both invalid_code) so no internal state leaks.
+    const trainer = await trainerRepository.get(trainerId);
+    const resolvedRole = await roleService.resolveRole(trainerId);
+    if (resolvedRole !== 'trainer' || !trainer || trainer.status !== 'active') {
       return { linked: false, reason: 'invalid_code' };
     }
 
-    const role = await roleService.resolveRole(studentUid);
-    if (role === 'trainer') {
+    // A trainer account can never be linked as a student.
+    const callerRole = await roleService.resolveRole(studentUid);
+    if (callerRole === 'trainer') {
       throw new ConflictError('Trainer accounts cannot be linked to another trainer.');
     }
 
+    const trainerName = (trainer.name as string | undefined) ?? undefined;
+
+    // Inspect any existing active link to apply the one-active-trainer guard.
+    const existingLink = await trainerLinkRepository.get(studentUid);
+    const hasActiveLink = existingLink?.status === 'active';
+    const currentTrainerId = existingLink?.trainerId as string | undefined;
+
+    if (hasActiveLink && currentTrainerId === trainerId) {
+      return { linked: true, trainerId, trainerName, alreadyLinked: true };
+    }
+
+    if (hasActiveLink && currentTrainerId && currentTrainerId !== trainerId) {
+      if (opts?.confirmSwitch !== true) {
+        const currentTrainer = await trainerRepository.get(currentTrainerId);
+        return {
+          linked: false,
+          reason: 'already_linked',
+          currentTrainer: {
+            trainerId: currentTrainerId,
+            name: (currentTrainer?.name as string | undefined) ?? null,
+          },
+          requestedTrainer: { trainerId, name: trainerName ?? null },
+        };
+      }
+      await this.switchStudentTrainer(studentUid, trainerId);
+      return { linked: true, switched: true, trainerId, trainerName };
+    }
+
+    // No active link -> create it (the existing create path: inline tx.set +
+    // profile mirror + a single +1 counter increment).
+    await this.createStudentLink(studentUid, trainerId);
+    return { linked: true, trainerId, trainerName };
+  }
+
+  /** Create-path link transaction (first link / re-activate): +1 counter. */
+  private async createStudentLink(studentUid: string, trainerId: string): Promise<void> {
     const db = getFirestore();
     const linkRef = trainerLinkRepository.doc(studentUid);
     const trainerRef = db.collection('trainers').doc(trainerId);
@@ -71,11 +155,8 @@ export class TrainerService {
         { merge: true },
       );
 
-      // Mirror the association onto the student's profile (best-effort, kept in
-      // sync here so the student app can show "My Trainer" without a join).
       tx.set(profileRef, { trainerId, updatedAt: now }, { merge: true });
 
-      // Only increment when this is a brand-new active link to this trainer.
       if (!alreadyActiveSameTrainer) {
         tx.set(
           trainerRef,
@@ -87,13 +168,187 @@ export class TrainerService {
         );
       }
     });
+  }
 
+  /**
+   * Confirmed switch: move the existing link to the new trainer. Updates ONLY
+   * the link row (trainerId + updatedAt) and re-mirrors profile.trainerId. It
+   * deliberately writes NO stored counter — the dashboard derives counts from
+   * the live countActiveStudents query, so both trainers' counts are
+   * automatically correct after the move and no decrement can drift negative.
+   */
+  private async switchStudentTrainer(studentUid: string, trainerId: string): Promise<void> {
+    const db = getFirestore();
+    const linkRef = trainerLinkRepository.doc(studentUid);
+    const profileRef = db.collection('users').doc(studentUid).collection('profile').doc('data');
+
+    await db.runTransaction(async (tx) => {
+      await tx.get(linkRef);
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      tx.set(linkRef, { trainerId, status: 'active', updatedAt: now }, { merge: true });
+      tx.set(profileRef, { trainerId, updatedAt: now }, { merge: true });
+    });
+  }
+
+  /**
+   * Idempotently promotes `uid` to a trainer: sets users/{uid}.role='trainer'
+   * and upserts trainers/{uid}, then generates+claims a unique code only if the
+   * trainer has none yet. Re-running never creates a duplicate trainer or a
+   * second code.
+   */
+  async ensureTrainerAccount(
+    uid: string,
+    details: { name?: string | null; email?: string | null; photoUrl?: string | null },
+  ): Promise<{ trainerId: string; referralCode: string | null }> {
+    const db = getFirestore();
+    const now = admin.firestore.FieldValue.serverTimestamp();
+
+    await db
+      .collection('users')
+      .doc(uid)
+      .set({ role: 'trainer', updatedAt: now }, { merge: true });
+
+    const existing = await trainerRepository.get(uid);
+    const base: Record<string, unknown> = {
+      trainerId: uid,
+      userId: uid,
+      status: 'active',
+      active: true,
+      updatedAt: now,
+    };
+    if (details.name) base.name = details.name;
+    if (!existing) {
+      base.photoUrl = details.photoUrl ?? null;
+      base.totalStudents = 0;
+      base.createdAt = now;
+    }
+    await trainerRepository.upsert(uid, base);
+
+    // Generate a code only if this trainer does not already have one.
+    const current = (existing?.referralCode as string | undefined) ?? null;
+    if (current) {
+      return { trainerId: uid, referralCode: current };
+    }
+    const code = await this.generateReferralCode(uid);
+    return { trainerId: uid, referralCode: code };
+  }
+
+  /** Returns the trainer's current referral code info. */
+  async getReferralCode(trainerId: string): Promise<ReferralCodeInfo> {
     const trainer = await trainerRepository.get(trainerId);
     return {
-      linked: true,
-      trainerId,
-      trainerName: (trainer?.name as string | undefined) ?? undefined,
+      code: (trainer?.referralCode as string | undefined) ?? null,
+      active: trainer?.status === 'active',
+      referralCodeUpdatedAt: toIso(trainer?.referralCodeUpdatedAt),
     };
+  }
+
+  /**
+   * Generates a NEW unique code (regenerate). Outer candidate loop (<=N); each
+   * attempt is one all-reads-before-writes transaction that claims the new
+   * code, deactivates the old one, and updates the trainer atomically. A
+   * collision aborts the attempt with zero writes and a fresh candidate is
+   * tried. 503 only if every attempt collides.
+   */
+  async generateReferralCode(trainerId: string, rng?: Rng): Promise<string> {
+    const trainer = await trainerRepository.get(trainerId);
+    const oldCodeLower = (trainer?.referralCodeLower as string | undefined) ?? null;
+
+    for (let attempt = 0; attempt < MAX_CODE_ATTEMPTS; attempt += 1) {
+      const candidate = generateCandidate(rng);
+      const codeLower = normalize(candidate);
+      // Skip the (astronomically unlikely) case where we regenerate our own code.
+      if (codeLower === oldCodeLower) continue;
+
+      const claimed = await this.runClaimTransaction(trainerId, candidate, codeLower, oldCodeLower);
+      if (claimed) return candidate;
+    }
+    throw new ServiceUnavailableError('Could not generate a unique referral code, please retry.');
+  }
+
+  /**
+   * Sets a trainer-chosen custom code. Validates format + reserved words, then
+   * runs the claim transaction ONCE (no retry): a collision with another
+   * trainer is a terminal 409.
+   */
+  async setCustomReferralCode(trainerId: string, desiredCode: string): Promise<string> {
+    const parsed = referralCodeSchema.safeParse({ code: desiredCode });
+    if (!parsed.success) {
+      throw new BadRequestError('Invalid referral code.', parsed.error.flatten());
+    }
+    const displayCode = parsed.data.code;
+    const codeLower = normalize(displayCode);
+
+    const trainer = await trainerRepository.get(trainerId);
+    const oldCodeLower = (trainer?.referralCodeLower as string | undefined) ?? null;
+
+    const claimed = await this.runClaimTransaction(trainerId, displayCode, codeLower, oldCodeLower);
+    if (!claimed) {
+      throw new ConflictError('That referral code is taken.');
+    }
+    return displayCode;
+  }
+
+  /**
+   * Read-only availability check for a desired custom code. Validates format +
+   * reserved words first, then applies the shared claimability predicate.
+   */
+  async checkAvailability(desiredCode: string, trainerId: string): Promise<AvailabilityResult> {
+    const parsed = availabilityQuerySchema.safeParse({ code: desiredCode });
+    if (!parsed.success) {
+      const flat = parsed.error.flatten();
+      const reserved = flat.fieldErrors.code?.some((m) => m.includes('reserved'));
+      return { available: false, reason: reserved ? 'reserved' : 'invalid' };
+    }
+    const codeLower = normalize(parsed.data.code);
+    const doc = await trainerRepository.getByReferralCodeDoc(codeLower);
+    // Claimable iff doc missing OR already owned by this trainer; unavailable
+    // iff owned by a different trainer (regardless of `active`).
+    if (!doc || doc.trainerId === trainerId) {
+      return { available: true };
+    }
+    return { available: false, reason: 'taken' };
+  }
+
+  /**
+   * One all-reads-before-writes transaction: read the new-code doc (+ old-code
+   * doc), apply the shared claimability predicate, and on success claim the new
+   * code + deactivate the old + update the trainer — atomically. Returns false
+   * (no writes) when the code is owned by another trainer.
+   */
+  private async runClaimTransaction(
+    trainerId: string,
+    displayCode: string,
+    codeLower: string,
+    oldCodeLower: string | null,
+  ): Promise<boolean> {
+    const db = getFirestore();
+    const newRef = trainerRepository.referralCodeDoc(codeLower);
+    const oldRef =
+      oldCodeLower && oldCodeLower !== codeLower
+        ? trainerRepository.referralCodeDoc(oldCodeLower)
+        : null;
+
+    return db.runTransaction(async (tx) => {
+      // READS FIRST.
+      const newSnap = await tx.get(newRef);
+      if (oldRef) await tx.get(oldRef);
+
+      const existing = newSnap.exists
+        ? ({
+            trainerId: (newSnap.data()?.trainerId as string) ?? '',
+            active: newSnap.data()?.active,
+          } as { trainerId: string; active?: boolean })
+        : null;
+
+      // DECIDE + WRITE (claim is a no-op write guard when taken by another).
+      const ok = trainerRepository.claimReferralCode(tx, codeLower, displayCode, trainerId, existing);
+      if (!ok) return false;
+
+      if (oldRef) trainerRepository.deactivateReferralCode(tx, oldCodeLower as string);
+      trainerRepository.setActiveReferralCodeOnTrainer(tx, trainerId, displayCode, codeLower);
+      return true;
+    });
   }
 
   /** Trainer profile with an authoritative live active-student count. */

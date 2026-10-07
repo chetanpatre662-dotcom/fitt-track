@@ -3,6 +3,10 @@ import { requireUid } from '../middleware/auth.js';
 import { assertTrainerOwnsStudent } from '../middleware/role.js';
 import { trainerService } from '../services/trainerService.js';
 import { ok } from '../utils/http.js';
+import type {
+  ReferralCodeInput,
+  AvailabilityQueryInput,
+} from '../validators/trainerValidators.js';
 
 function todayKey(): string {
   const d = new Date();
@@ -81,5 +85,35 @@ export async function studentPhotos(req: Request, res: Response): Promise<void> 
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
   const result = await trainerService.studentPhotos(studentUid);
+  ok(res, result);
+}
+
+/** GET /api/trainer/referral-code — the trainer's current code. */
+export async function getReferralCode(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const referralCode = await trainerService.getReferralCode(trainerId);
+  ok(res, { referralCode });
+}
+
+/** POST /api/trainer/referral-code — generate a new unique code (regenerate). */
+export async function generateReferralCode(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const code = await trainerService.generateReferralCode(trainerId);
+  ok(res, { referralCode: { code, active: true } });
+}
+
+/** PATCH /api/trainer/referral-code — set a custom code. */
+export async function setReferralCode(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { code } = req.body as ReferralCodeInput;
+  const saved = await trainerService.setCustomReferralCode(trainerId, code);
+  ok(res, { referralCode: { code: saved, active: true } });
+}
+
+/** GET /api/trainer/referral-code/availability?code= — availability check. */
+export async function checkReferralCodeAvailability(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { code } = req.query as unknown as AvailabilityQueryInput;
+  const result = await trainerService.checkAvailability(code, trainerId);
   ok(res, result);
 }

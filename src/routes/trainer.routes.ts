@@ -7,6 +7,8 @@ import {
   dateQuerySchema,
   historyQuerySchema,
   studentUidParamsSchema,
+  referralCodeSchema,
+  availabilityQuerySchema,
 } from '../validators/trainerValidators.js';
 import * as c from '../controllers/trainerController.js';
 
@@ -18,6 +20,20 @@ router.use(requireTrainer);
 
 router.get('/profile', asyncHandler(c.getProfile));
 router.get('/students', asyncHandler(c.listStudents));
+
+// Referral-code management (self-service, trainer-only).
+router.get(
+  '/referral-code/availability',
+  validate({ query: availabilityQuerySchema }),
+  asyncHandler(c.checkReferralCodeAvailability),
+);
+router.get('/referral-code', asyncHandler(c.getReferralCode));
+router.post('/referral-code', asyncHandler(c.generateReferralCode));
+router.patch(
+  '/referral-code',
+  validate({ body: referralCodeSchema }),
+  asyncHandler(c.setReferralCode),
+);
 
 const studentParams = { params: studentUidParamsSchema };
 

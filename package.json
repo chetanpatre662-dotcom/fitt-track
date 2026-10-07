@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed": "tsx src/scripts/seedExercises.ts",
-    "seed:trainer": "tsx src/scripts/seedTrainer.ts"
+    "seed:trainer": "tsx src/scripts/seedTrainer.ts",
+    "migrate:referral-codes": "tsx src/scripts/migrateReferralCodes.ts"
   },
   "dependencies": {
     "@google/genai": "^1.9.0",
