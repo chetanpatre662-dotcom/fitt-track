@@ -8,7 +8,7 @@ import { waterService } from './waterService.js';
 import { progressService, type RangeKey } from './progressService.js';
 import { progressPhotoService } from './progressPhotoService.js';
 import { roleService } from './roleService.js';
-import { assertTrainerOwnsStudent } from '../middleware/role.js';
+import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../middleware/role.js';
 import { ConflictError, BadRequestError, ServiceUnavailableError } from '../utils/errors.js';
 import { generateCandidate, normalize, type Rng } from '../utils/referralCode.js';
 import { referralCodeSchema, availabilityQuerySchema } from '../validators/trainerValidators.js';
@@ -30,6 +30,22 @@ export interface LinkResult {
   /** True when an existing link was moved to a new trainer (confirmed switch). */
   switched?: boolean;
   /** Present only on an `already_linked` outcome. */
+  currentTrainer?: TrainerRef;
+  requestedTrainer?: TrainerRef;
+}
+
+/** Result of a connect-trainer REQUEST attempt (pending flow). */
+export interface RequestResult {
+  ok: boolean;
+  /** Soft-failure reason (HTTP stays 200 for these). */
+  reason?: 'invalid_code' | 'already_linked';
+  /** The request/link status after this call (on ok:true). */
+  status?: 'pending' | 'active' | 'rejected';
+  /** The student acted on (present on approve/reject outcomes). */
+  studentUid?: string;
+  trainerId?: string;
+  trainerName?: string;
+  /** Present only on an `already_linked` outcome (active link elsewhere). */
   currentTrainer?: TrainerRef;
   requestedTrainer?: TrainerRef;
 }
@@ -188,6 +204,180 @@ export class TrainerService {
       tx.set(linkRef, { trainerId, status: 'active', updatedAt: now }, { merge: true });
       tx.set(profileRef, { trainerId, updatedAt: now }, { merge: true });
     });
+  }
+
+  /**
+   * Creates a PENDING connect request from `studentUid` to the trainer that
+   * owns `referralCode`. Validation mirrors `linkStudent` exactly:
+   * - Unknown / inactive / non-trainer code -> soft {ok:false,
+   *   reason:'invalid_code'} (no write, so a typo never errors out
+   *   registration).
+   * - A trainer account can never request a trainer -> 409.
+   * Then, instead of immediately linking:
+   * - An existing link to the SAME trainer that is already pending or active ->
+   *   idempotent soft success {ok:true, status:<existing>} with NO write.
+   * - An ACTIVE link to a DIFFERENT trainer -> {ok:false,
+   *   reason:'already_linked', currentTrainer, requestedTrainer} (a switch is a
+   *   new explicit request, never a silent auto-switch).
+   * - Otherwise write trainerLinks/{studentUid} status:'pending' (NO
+   *   profile.trainerId mirror and NO totalStudents increment — access and
+   *   counting happen only on approval).
+   */
+  async requestTrainer(studentUid: string, referralCode: string): Promise<RequestResult> {
+    const codeLower = normalize(referralCode);
+
+    const codeDoc = await trainerRepository.getByReferralCodeDoc(codeLower);
+    if (!codeDoc || !codeDoc.active) {
+      return { ok: false, reason: 'invalid_code' };
+    }
+    const trainerId = codeDoc.trainerId;
+
+    const trainer = await trainerRepository.get(trainerId);
+    const resolvedRole = await roleService.resolveRole(trainerId);
+    if (resolvedRole !== 'trainer' || !trainer || trainer.status !== 'active') {
+      return { ok: false, reason: 'invalid_code' };
+    }
+
+    const callerRole = await roleService.resolveRole(studentUid);
+    if (callerRole === 'trainer') {
+      throw new ConflictError('Trainer accounts cannot be linked to another trainer.');
+    }
+
+    const trainerName = (trainer.name as string | undefined) ?? undefined;
+
+    const existingLink = await trainerLinkRepository.get(studentUid);
+    const existingStatus = existingLink?.status as string | undefined;
+    const existingTrainerId = existingLink?.trainerId as string | undefined;
+
+    // Idempotent: already pending or active with the SAME trainer -> no write.
+    if (
+      existingTrainerId === trainerId &&
+      (existingStatus === 'pending' || existingStatus === 'active')
+    ) {
+      return {
+        ok: true,
+        status: existingStatus as 'pending' | 'active',
+        trainerId,
+        trainerName,
+      };
+    }
+
+    // An ACTIVE link to a different trainer: never silently overwrite.
+    if (existingStatus === 'active' && existingTrainerId && existingTrainerId !== trainerId) {
+      const currentTrainer = await trainerRepository.get(existingTrainerId);
+      return {
+        ok: false,
+        reason: 'already_linked',
+        currentTrainer: {
+          trainerId: existingTrainerId,
+          name: (currentTrainer?.name as string | undefined) ?? null,
+        },
+        requestedTrainer: { trainerId, name: trainerName ?? null },
+      };
+    }
+
+    // No active/pending link to this trainer -> create a pending request. This
+    // also (re)claims a prior pending/rejected/inactive link to a different
+    // trainer by moving it to pending on the new trainer.
+    await this.createPendingRequest(studentUid, trainerId);
+    return { ok: true, status: 'pending', trainerId, trainerName };
+  }
+
+  /** Write (or re-point) the single link doc to a PENDING request. */
+  private async createPendingRequest(studentUid: string, trainerId: string): Promise<void> {
+    const db = getFirestore();
+    const linkRef = trainerLinkRepository.doc(studentUid);
+
+    await db.runTransaction(async (tx) => {
+      const linkSnap = await tx.get(linkRef);
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      tx.set(
+        linkRef,
+        {
+          studentUid,
+          trainerId,
+          status: 'pending',
+          ...(linkSnap.exists ? {} : { createdAt: now }),
+          updatedAt: now,
+        },
+        { merge: true },
+      );
+    });
+  }
+
+  /**
+   * Approves a pending request: requires the pending-aware ownership check,
+   * then in one transaction (same shape as createStudentLink) sets
+   * status:'active', mirrors users/{studentUid}/profile/data.trainerId AND
+   * trainerStatus:'approved', and increments totalStudents EXACTLY once
+   * (guarded on the pre-transaction status so a double-approve cannot
+   * double-count).
+   */
+  async approveRequest(trainerId: string, studentUid: string): Promise<RequestResult> {
+    await assertTrainerOwnsPendingRequest(trainerId, studentUid);
+
+    const db = getFirestore();
+    const linkRef = trainerLinkRepository.doc(studentUid);
+    const trainerRef = db.collection('trainers').doc(trainerId);
+    const profileRef = db.collection('users').doc(studentUid).collection('profile').doc('data');
+
+    await db.runTransaction(async (tx) => {
+      const linkSnap = await tx.get(linkRef);
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      const wasActive = linkSnap.exists && linkSnap.data()?.status === 'active';
+
+      tx.set(linkRef, { trainerId, status: 'active', updatedAt: now }, { merge: true });
+      tx.set(profileRef, { trainerId, trainerStatus: 'approved', updatedAt: now }, { merge: true });
+
+      if (!wasActive) {
+        tx.set(
+          trainerRef,
+          { totalStudents: admin.firestore.FieldValue.increment(1), updatedAt: now },
+          { merge: true },
+        );
+      }
+    });
+
+    return { ok: true, status: 'active', studentUid, trainerId };
+  }
+
+  /**
+   * Rejects a pending request: requires pending ownership, sets
+   * status:'rejected'. No profile mirror and no counter change.
+   */
+  async rejectRequest(trainerId: string, studentUid: string): Promise<RequestResult> {
+    await assertTrainerOwnsPendingRequest(trainerId, studentUid);
+
+    const db = getFirestore();
+    const linkRef = trainerLinkRepository.doc(studentUid);
+
+    await db.runTransaction(async (tx) => {
+      await tx.get(linkRef);
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      tx.set(linkRef, { status: 'rejected', updatedAt: now }, { merge: true });
+    });
+
+    return { ok: true, status: 'rejected', studentUid, trainerId };
+  }
+
+  /**
+   * Pending requests for a trainer's "Requests" tab, enriched with the
+   * student's name + photoUrl (slimmer than listStudents — identity only).
+   */
+  async listRequestsForTrainer(trainerId: string): Promise<Record<string, unknown>[]> {
+    const requests = await trainerLinkRepository.listRequestsByTrainer(trainerId);
+    return Promise.all(
+      requests.map(async (link) => {
+        const studentUid = link.studentUid as string;
+        const profile = await profileRepository.get(studentUid);
+        return {
+          studentUid,
+          name: (profile?.name as string | undefined) ?? null,
+          photoUrl: (profile?.photoUrl as string | undefined) ?? null,
+          requestedAt: toIso(link.updatedAt) ?? toIso(link.createdAt),
+        };
+      }),
+    );
   }
 
   /**

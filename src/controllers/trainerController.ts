@@ -88,6 +88,29 @@ export async function studentPhotos(req: Request, res: Response): Promise<void> 
   ok(res, result);
 }
 
+/** GET /api/trainer/requests — pending connect requests (name + photo). */
+export async function listRequests(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const requests = await trainerService.listRequestsForTrainer(trainerId);
+  ok(res, { requests });
+}
+
+/** POST /api/trainer/requests/:studentUid/approve — approve a pending request. */
+export async function approveRequest(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  const result = await trainerService.approveRequest(trainerId, studentUid);
+  ok(res, { ok: true, studentUid, status: result.status });
+}
+
+/** POST /api/trainer/requests/:studentUid/reject — reject a pending request. */
+export async function rejectRequest(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  const result = await trainerService.rejectRequest(trainerId, studentUid);
+  ok(res, { ok: true, studentUid, status: result.status });
+}
+
 /** GET /api/trainer/referral-code — the trainer's current code. */
 export async function getReferralCode(req: Request, res: Response): Promise<void> {
   const trainerId = requireUid(req);

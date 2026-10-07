@@ -98,6 +98,23 @@ export type RoutineCategory = (typeof ROUTINE_CATEGORIES)[number];
 export const PR_TYPES = ['max_weight', 'max_reps', 'max_volume', 'best_distance', 'best_time'] as const;
 export type PrType = (typeof PR_TYPES)[number];
 
+/**
+ * Lifecycle states for the single trainerLinks/{studentUid} document (one
+ * student belongs to at most one trainer, so the doc is reused across state
+ * transitions rather than a new collection — the single-trainer invariant is
+ * already enforced by the doc being keyed on the student uid).
+ *
+ *  - 'pending'  = the student sent a connect request; awaiting trainer action.
+ *                 Grants NO per-student data access.
+ *  - 'active'   = the APPROVED state (intentionally reused so existing
+ *                 ownership/count/list queries that key on 'active' keep working
+ *                 unchanged). This is the only status that grants data access.
+ *  - 'rejected' = the trainer declined the request.
+ *  - 'inactive' = a previously-active link that was deactivated.
+ */
+export const TRAINER_LINK_STATUSES = ['pending', 'active', 'rejected', 'inactive'] as const;
+export type TrainerLinkStatus = (typeof TRAINER_LINK_STATUSES)[number];
+
 export interface Exercise {
   id: string;
   name: string;

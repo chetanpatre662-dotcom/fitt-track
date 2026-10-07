@@ -37,6 +37,19 @@ router.patch(
 
 const studentParams = { params: studentUidParamsSchema };
 
+// Connect-request inbox (trainer-only): list pending, approve/reject.
+router.get('/requests', asyncHandler(c.listRequests));
+router.post(
+  '/requests/:studentUid/approve',
+  validate(studentParams),
+  asyncHandler(c.approveRequest),
+);
+router.post(
+  '/requests/:studentUid/reject',
+  validate(studentParams),
+  asyncHandler(c.rejectRequest),
+);
+
 router.get('/students/:studentUid/overview', validate(studentParams), asyncHandler(c.studentOverview));
 router.get(
   '/students/:studentUid/workouts',

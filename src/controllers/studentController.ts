@@ -14,13 +14,15 @@ export async function getTrainer(req: Request, res: Response): Promise<void> {
 
 /**
  * POST /api/student/connect-trainer — connect-after-registration from Profile.
- * A thin alias delegating to the same linkStudent service as /auth/link-trainer
- * (identical body/semantics incl. the switch guard) so behavior cannot drift.
+ * A thin alias delegating to the same requestTrainer service as
+ * /auth/link-trainer (identical body/semantics) so behavior cannot drift. A
+ * valid code now creates a PENDING request (awaiting trainer approval), not an
+ * active link; an unknown code stays a soft {ok:false, reason:'invalid_code'}.
  */
 export async function connectTrainer(req: Request, res: Response): Promise<void> {
   const uid = requireUid(req);
-  const { referralCode, confirmSwitch } = req.body as LinkTrainerInput;
-  const result = await trainerService.linkStudent(uid, referralCode, { confirmSwitch });
+  const { referralCode } = req.body as LinkTrainerInput;
+  const result = await trainerService.requestTrainer(uid, referralCode);
   ok(res, result);
 }
 

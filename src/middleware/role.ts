@@ -36,3 +36,20 @@ export async function assertTrainerOwnsStudent(
     throw new NotFoundError('Student not found');
   }
 }
+
+/**
+ * Asserts that `trainerId` owns a PENDING request from `studentUid` (used only
+ * by approve/reject). Any failure — missing link, a different trainer's
+ * request, or a link that is not pending — throws a 404 (NOT 403) for the same
+ * anti-enumeration reason as `assertTrainerOwnsStudent`. Deliberately does NOT
+ * grant any per-student data access; it only authorizes acting on the request.
+ */
+export async function assertTrainerOwnsPendingRequest(
+  trainerId: string,
+  studentUid: string,
+): Promise<void> {
+  const link = await trainerLinkRepository.get(studentUid);
+  if (!link || link.trainerId !== trainerId || link.status !== 'pending') {
+    throw new NotFoundError('Request not found');
+  }
+}

@@ -109,7 +109,7 @@ vi.mock('../config/firebase.js', () => ({
 }));
 
 import { trainerService } from '../services/trainerService.js';
-import { assertTrainerOwnsStudent } from '../middleware/role.js';
+import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../middleware/role.js';
 import { roleService } from '../services/roleService.js';
 
 const TRAINER = 'trainer-1';
@@ -227,6 +227,178 @@ describe('TrainerService.linkStudent one-active-trainer switch guard', () => {
     const res = await trainerService.linkStudent('stu-s', 'GYMRAHUL45');
     expect(res.reason).toBe('already_linked');
     expect(res.currentTrainer).toEqual({ trainerId: 'trainer-1', name: null });
+  });
+});
+
+describe('TrainerService.requestTrainer (pending flow)', () => {
+  it('valid code creates a PENDING request: no profile mirror, no increment', async () => {
+    const res = await trainerService.requestTrainer('stu-1', 'FitChe123');
+    expect(res).toMatchObject({ ok: true, status: 'pending', trainerId: TRAINER });
+    expect(res.trainerName).toBe('Alex Carter');
+
+    expect(docs.get('trainerLinks/stu-1')).toMatchObject({ trainerId: TRAINER, status: 'pending' });
+    // No access-granting side effects until approval.
+    expect(docs.has('users/stu-1/profile/data')).toBe(false);
+    expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(0);
+  });
+
+  it('normalizes case/whitespace in the referral code', async () => {
+    const res = await trainerService.requestTrainer('stu-2', '  FITCHE123  ');
+    expect(res.ok).toBe(true);
+    expect(docs.get('trainerLinks/stu-2')).toMatchObject({ status: 'pending' });
+  });
+
+  it('soft-fails (no write) on an invalid code', async () => {
+    const res = await trainerService.requestTrainer('stu-3', 'nope');
+    expect(res).toEqual({ ok: false, reason: 'invalid_code' });
+    expect(docs.has('trainerLinks/stu-3')).toBe(false);
+  });
+
+  it('treats an inactive code as invalid', async () => {
+    docs.set('referralCodes/fitche123', { trainerId: TRAINER, code: 'FITCHE123', active: false });
+    const res = await trainerService.requestTrainer('stu-x', 'FITCHE123');
+    expect(res).toEqual({ ok: false, reason: 'invalid_code' });
+  });
+
+  it('rejects a trainer account trying to request a trainer (409)', async () => {
+    docs.set('users/trainer-x', { role: 'trainer' });
+    await expect(trainerService.requestTrainer('trainer-x', 'FITCHE123')).rejects.toMatchObject({
+      statusCode: 409,
+    });
+  });
+
+  it('is idempotent: a duplicate pending request to the same trainer does not re-write', async () => {
+    await trainerService.requestTrainer('stu-4', 'FITCHE123');
+    docs.set('trainerLinks/stu-4', { trainerId: TRAINER, status: 'pending', marker: 1 });
+    const res = await trainerService.requestTrainer('stu-4', 'FITCHE123');
+    expect(res).toMatchObject({ ok: true, status: 'pending', trainerId: TRAINER });
+    // Untouched (our marker survives -> no write happened).
+    expect(docs.get('trainerLinks/stu-4')).toMatchObject({ marker: 1 });
+  });
+
+  it('is idempotent when already ACTIVE with the same trainer (no downgrade)', async () => {
+    docs.set('trainerLinks/stu-5', { trainerId: TRAINER, status: 'active' });
+    const res = await trainerService.requestTrainer('stu-5', 'FITCHE123');
+    expect(res).toMatchObject({ ok: true, status: 'active', trainerId: TRAINER });
+    expect(docs.get('trainerLinks/stu-5')).toMatchObject({ status: 'active' });
+  });
+
+  it('already ACTIVE with a different trainer -> already_linked, NO write', async () => {
+    seedTrainer('trainer-2', 'Bela Rao', 'GYMRAHUL45');
+    docs.set('trainerLinks/stu-s', { trainerId: 'trainer-1', status: 'active' });
+    const before = JSON.stringify(docs.get('trainerLinks/stu-s'));
+
+    const res = await trainerService.requestTrainer('stu-s', 'GYMRAHUL45');
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('already_linked');
+    expect(res.currentTrainer).toEqual({ trainerId: 'trainer-1', name: 'Alex Carter' });
+    expect(res.requestedTrainer).toEqual({ trainerId: 'trainer-2', name: 'Bela Rao' });
+    expect(JSON.stringify(docs.get('trainerLinks/stu-s'))).toBe(before);
+  });
+
+  it('a pending request to a different trainer re-points the link to pending', async () => {
+    seedTrainer('trainer-2', 'Bela Rao', 'GYMRAHUL45');
+    docs.set('trainerLinks/stu-p', { trainerId: 'trainer-1', status: 'pending' });
+    const res = await trainerService.requestTrainer('stu-p', 'GYMRAHUL45');
+    expect(res).toMatchObject({ ok: true, status: 'pending', trainerId: 'trainer-2' });
+    expect(docs.get('trainerLinks/stu-p')).toMatchObject({ trainerId: 'trainer-2', status: 'pending' });
+  });
+});
+
+describe('TrainerService.approveRequest / rejectRequest', () => {
+  beforeEach(() => {
+    docs.set('trainerLinks/stu-req', { trainerId: TRAINER, status: 'pending' });
+    docs.set('users/stu-req/profile/data', { name: 'Nina' });
+  });
+
+  it('approve: pending -> active, mirrors trainerId + trainerStatus, +1 count once', async () => {
+    const res = await trainerService.approveRequest(TRAINER, 'stu-req');
+    expect(res).toMatchObject({ ok: true, status: 'active', studentUid: 'stu-req' });
+    expect(docs.get('trainerLinks/stu-req')).toMatchObject({ trainerId: TRAINER, status: 'active' });
+    expect(docs.get('users/stu-req/profile/data')).toMatchObject({
+      trainerId: TRAINER,
+      trainerStatus: 'approved',
+    });
+    expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(1);
+  });
+
+  it('approve throws 404 for a non-owning trainer', async () => {
+    await expect(trainerService.approveRequest('trainer-2', 'stu-req')).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    // No side effects.
+    expect(docs.get('trainerLinks/stu-req')).toMatchObject({ status: 'pending' });
+    expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(0);
+  });
+
+  it('approve throws 404 for a non-pending (already active) link', async () => {
+    docs.set('trainerLinks/stu-req', { trainerId: TRAINER, status: 'active' });
+    await expect(trainerService.approveRequest(TRAINER, 'stu-req')).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+
+  it('reject: pending -> rejected, no mirror, no count change', async () => {
+    const res = await trainerService.rejectRequest(TRAINER, 'stu-req');
+    expect(res).toMatchObject({ ok: true, status: 'rejected', studentUid: 'stu-req' });
+    expect(docs.get('trainerLinks/stu-req')).toMatchObject({ status: 'rejected' });
+    expect(docs.has('users/stu-req/profile/data') && docs.get('users/stu-req/profile/data')?.trainerId).toBeFalsy();
+    expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(0);
+  });
+
+  it('reject throws 404 for a non-owning trainer', async () => {
+    await expect(trainerService.rejectRequest('trainer-2', 'stu-req')).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+});
+
+describe('TrainerService.listRequestsForTrainer', () => {
+  it('returns only pending requests, enriched with name + photoUrl', async () => {
+    docs.set('trainerLinks/p1', { trainerId: TRAINER, status: 'pending', updatedAt: '2026-01-02T00:00:00Z' });
+    docs.set('trainerLinks/p2', { trainerId: TRAINER, status: 'pending', updatedAt: '2026-01-03T00:00:00Z' });
+    docs.set('trainerLinks/active1', { trainerId: TRAINER, status: 'active' });
+    docs.set('trainerLinks/otherpending', { trainerId: 'trainer-2', status: 'pending' });
+    docs.set('users/p1/profile/data', { name: 'Pat', photoUrl: 'http://img/p1' });
+    docs.set('users/p2/profile/data', { name: 'Quinn', photoUrl: null });
+
+    const requests = await trainerService.listRequestsForTrainer(TRAINER);
+    expect(requests.map((r) => r.studentUid)).toEqual(['p2', 'p1']); // newest first
+    expect(requests[1]).toMatchObject({ studentUid: 'p1', name: 'Pat', photoUrl: 'http://img/p1' });
+    // Active + other-trainer pending excluded.
+    expect(requests.find((r) => r.studentUid === 'active1')).toBeUndefined();
+    expect(requests.find((r) => r.studentUid === 'otherpending')).toBeUndefined();
+  });
+
+  it('tolerates a missing profile (name/photo null)', async () => {
+    docs.set('trainerLinks/p3', { trainerId: TRAINER, status: 'pending' });
+    const requests = await trainerService.listRequestsForTrainer(TRAINER);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ studentUid: 'p3', name: null, photoUrl: null });
+  });
+});
+
+describe('assertTrainerOwnsPendingRequest', () => {
+  beforeEach(() => {
+    docs.set('trainerLinks/pend', { trainerId: TRAINER, status: 'pending' });
+    docs.set('trainerLinks/act', { trainerId: TRAINER, status: 'active' });
+    docs.set('trainerLinks/otherpend', { trainerId: 'trainer-2', status: 'pending' });
+  });
+
+  it('passes for an owned pending request', async () => {
+    await expect(assertTrainerOwnsPendingRequest(TRAINER, 'pend')).resolves.toBeUndefined();
+  });
+
+  it('throws 404 for an active (non-pending) link', async () => {
+    await expect(assertTrainerOwnsPendingRequest(TRAINER, 'act')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("throws 404 for another trainer's pending request", async () => {
+    await expect(assertTrainerOwnsPendingRequest(TRAINER, 'otherpend')).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it('throws 404 for a missing link', async () => {
+    await expect(assertTrainerOwnsPendingRequest(TRAINER, 'ghost')).rejects.toMatchObject({ statusCode: 404 });
   });
 });
 

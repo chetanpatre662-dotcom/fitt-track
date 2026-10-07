@@ -33,6 +33,20 @@ export class TrainerLinkRepository {
     return rows;
   }
 
+  /** All PENDING requests addressed to a trainer, newest first. */
+  async listRequestsByTrainer(trainerId: string): Promise<Record<string, unknown>[]> {
+    const snap = await this.col
+      .where('trainerId', '==', trainerId)
+      .where('status', '==', 'pending')
+      .get();
+    const rows: Record<string, unknown>[] = snap.docs.map((d) => ({
+      studentUid: d.id,
+      ...(d.data() as Record<string, unknown>),
+    }));
+    rows.sort((a, b) => tsMillis(b.updatedAt) - tsMillis(a.updatedAt));
+    return rows;
+  }
+
   /** Direct document reference (used inside transactions). */
   doc(studentUid: string): FirebaseFirestore.DocumentReference {
     return this.col.doc(studentUid);

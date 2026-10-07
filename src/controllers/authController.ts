@@ -24,14 +24,16 @@ export async function verify(req: Request, res: Response): Promise<void> {
 
 /**
  * POST /api/auth/link-trainer
- * Links the authenticated student to a trainer by referral code. The code is
- * validated on the backend; an unknown code is a soft success (no link) so a
- * typo never blocks registration.
+ * Sends a connect REQUEST from the authenticated student to a trainer by
+ * referral code. The code is validated on the backend; an unknown code is a
+ * soft success (no request) so a typo never blocks registration. A valid code
+ * creates a PENDING request awaiting the trainer's approval — it does NOT grant
+ * access or link immediately.
  */
 export async function linkTrainer(req: Request, res: Response): Promise<void> {
   const uid = requireUid(req);
-  const { referralCode, confirmSwitch } = req.body as LinkTrainerInput;
-  const result = await trainerService.linkStudent(uid, referralCode, { confirmSwitch });
+  const { referralCode } = req.body as LinkTrainerInput;
+  const result = await trainerService.requestTrainer(uid, referralCode);
   ok(res, result);
 }
 
