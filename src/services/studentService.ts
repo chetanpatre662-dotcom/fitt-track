@@ -10,22 +10,30 @@ import { profileRepository } from '../repositories/profileRepository.js';
  */
 export class StudentService {
   /**
-   * Returns the student's trainer, or {trainer:null} when there is no active
-   * link (unlinked, or a non-active link).
+   * Returns the student's trainer for the "My Trainer" card. Surfaces both an
+   * `active` (approved) link AND a `pending` request so the student sees a
+   * "Pending approval" state after sending a request; a `rejected`/`inactive`
+   * link (or no link) maps to {trainer:null} so the UI falls back to "Add
+   * Trainer". The connected Trainer Code is exposed ONLY once the link is
+   * `active` (approved) — a pending request shows no code yet.
    */
   async getTrainer(studentUid: string): Promise<{ trainer: Record<string, unknown> | null }> {
     const link = await trainerLinkRepository.get(studentUid);
-    if (!link || link.status !== 'active') return { trainer: null };
+    if (!link || (link.status !== 'active' && link.status !== 'pending')) {
+      return { trainer: null };
+    }
 
     const trainer = await trainerRepository.get(link.trainerId as string);
     if (!trainer) return { trainer: null };
 
+    const isActive = link.status === 'active';
     return {
       trainer: {
         trainerId: trainer.trainerId ?? trainer.id,
         name: trainer.name ?? null,
         photoUrl: trainer.photoUrl ?? null,
-        referralCode: trainer.referralCode ?? null,
+        // Read-only connected code only after approval; hidden while pending.
+        referralCode: isActive ? trainer.referralCode ?? null : null,
         status: trainer.status ?? 'active',
         associationStatus: link.status,
       },

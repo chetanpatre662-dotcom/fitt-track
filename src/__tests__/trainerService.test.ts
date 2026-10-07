@@ -109,6 +109,7 @@ vi.mock('../config/firebase.js', () => ({
 }));
 
 import { trainerService } from '../services/trainerService.js';
+import { studentService } from '../services/studentService.js';
 import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../middleware/role.js';
 import { roleService } from '../services/roleService.js';
 
@@ -596,5 +597,44 @@ describe('TrainerService trainer-reads-student round trips', () => {
     docs.set('users/stu-nut/profile/data', { name: 'Nina', shareProgressWithTrainer: false });
     const res = await trainerService.studentPhotos('stu-nut');
     expect(res).toEqual({ shared: false, photos: [] });
+  });
+});
+
+describe('StudentService.getTrainer (My Trainer card)', () => {
+  it('returns {trainer:null} when there is no link', async () => {
+    expect(await studentService.getTrainer('stu-none')).toEqual({ trainer: null });
+  });
+
+  it('surfaces an APPROVED (active) link with the connected code read-only', async () => {
+    docs.set('trainerLinks/stu-ok', { trainerId: TRAINER, status: 'active' });
+    const res = await studentService.getTrainer('stu-ok');
+    expect(res.trainer).toMatchObject({
+      trainerId: TRAINER,
+      name: 'Alex Carter',
+      referralCode: 'FITCHE123',
+      associationStatus: 'active',
+    });
+  });
+
+  it('surfaces a PENDING request WITHOUT exposing the Trainer Code yet', async () => {
+    docs.set('trainerLinks/stu-pend', { trainerId: TRAINER, status: 'pending' });
+    const res = await studentService.getTrainer('stu-pend');
+    expect(res.trainer).toMatchObject({
+      trainerId: TRAINER,
+      name: 'Alex Carter',
+      associationStatus: 'pending',
+    });
+    // No code is leaked until the request is approved.
+    expect(res.trainer?.referralCode).toBeNull();
+  });
+
+  it('treats a rejected link as no trainer (fall back to Add Trainer)', async () => {
+    docs.set('trainerLinks/stu-rej', { trainerId: TRAINER, status: 'rejected' });
+    expect(await studentService.getTrainer('stu-rej')).toEqual({ trainer: null });
+  });
+
+  it('treats an inactive link as no trainer', async () => {
+    docs.set('trainerLinks/stu-inact', { trainerId: TRAINER, status: 'inactive' });
+    expect(await studentService.getTrainer('stu-inact')).toEqual({ trainer: null });
   });
 });
