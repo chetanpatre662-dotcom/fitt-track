@@ -4,6 +4,9 @@ import { BadRequestError, NotFoundError } from '../utils/errors.js';
 import { logger } from '../utils/logger.js';
 import type { ProgressPhotoCreateInput } from '../validators/progressPhotoValidators.js';
 
+/** TTL for trainer-facing progress-photo signed URLs (15 minutes). */
+const SIGNED_URL_TTL_MS = 15 * 60 * 1000;
+
 /**
  * Progress-photo metadata service. Photos are private per user: the storage
  * path MUST live under the caller's own users/{uid}/ prefix, so one user can
@@ -34,6 +37,37 @@ export class ProgressPhotoService {
   async list(uid: string): Promise<Record<string, unknown>[]> {
     const rows = await progressPhotoRepository.list(uid);
     return rows.map((r) => ({ ...r, takenAt: toIso(r.takenAt) }));
+  }
+
+  /**
+   * Lists a user's progress photos with short-lived (read-only) V4 signed URLs
+   * so an authorized trainer can view them without the objects ever being
+   * public. Signing is best-effort per photo: a failure yields url:null for
+   * that entry rather than failing the whole request, and the storage.rules
+   * stay unchanged (objects remain private; access is only via these URLs).
+   */
+  async listWithSignedUrls(uid: string): Promise<Record<string, unknown>[]> {
+    const rows = await progressPhotoRepository.list(uid);
+    const expires = Date.now() + SIGNED_URL_TTL_MS;
+    const bucket = getBucket();
+
+    return Promise.all(
+      rows.map(async (r) => {
+        const storagePath = r.storagePath as string | undefined;
+        let url: string | null = null;
+        if (storagePath) {
+          try {
+            const [signed] = await bucket
+              .file(storagePath)
+              .getSignedUrl({ action: 'read', expires });
+            url = signed;
+          } catch (err) {
+            logger.warn({ err, uid }, 'Failed to sign progress photo URL (continuing)');
+          }
+        }
+        return { ...r, takenAt: toIso(r.takenAt), url };
+      }),
+    );
   }
 
   /**

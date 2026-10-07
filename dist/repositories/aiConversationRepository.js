@@ -1,6 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.aiConversationRepository = exports.AiConversationRepository = void 0;
+exports.titleFromFirstMessage = titleFromFirstMessage;
+exports.mapConversationSummary = mapConversationSummary;
+exports.mapMessage = mapMessage;
+exports.toIso = toIso;
 const firebase_js_1 = require("../config/firebase.js");
 /**
  * Persists AI chat threads at
@@ -48,22 +52,19 @@ class AiConversationRepository {
         const out = [];
         for (const doc of snap.docs) {
             const data = doc.data();
-            // First user message → conversation title (fallback to a generic label).
+            // First message → conversation title. We order ONLY by createdAt (covered
+            // by the existing messages (createdAt ASC) index) so this read never needs
+            // a composite index. The first message of a thread is always the user turn
+            // (aiController.chat persists 'user' then 'assistant'); if that first doc
+            // is somehow not a user turn, titleFromFirstMessage falls back to a label.
             const firstSnap = await doc.ref
                 .collection('messages')
-                .where('role', '==', 'user')
                 .orderBy('createdAt', 'asc')
                 .limit(1)
                 .get();
             const first = firstSnap.docs[0]?.data();
             const countSnap = await doc.ref.collection('messages').count().get();
-            out.push({
-                id: doc.id,
-                title: titleFrom(first?.text ?? ''),
-                createdAt: toIso(data.createdAt),
-                updatedAt: toIso(data.updatedAt),
-                messageCount: countSnap.data().count ?? 0,
-            });
+            out.push(mapConversationSummary(doc.id, data, first, countSnap.data().count ?? 0));
         }
         return out;
     }
@@ -74,14 +75,7 @@ class AiConversationRepository {
             .collection('messages')
             .orderBy('createdAt', 'asc')
             .get();
-        return snap.docs.map((d) => {
-            const m = d.data();
-            return {
-                role: m.role ?? 'user',
-                text: m.text ?? '',
-                createdAt: toIso(m.createdAt),
-            };
-        });
+        return snap.docs.map((d) => mapMessage(d.data()));
     }
     /**
      * Deletes AI conversations (and their messages subcollection) for ONE user
@@ -126,6 +120,46 @@ function titleFrom(text) {
     if (!t)
         return 'New conversation';
     return t.length > 60 ? `${t.slice(0, 57)}…` : t;
+}
+/**
+ * Derives the title from the conversation's first message. Only a 'user' turn
+ * produces a message-based title; any other role (or a missing/malformed first
+ * doc) falls back to the generic label. Pure — no Firestore access.
+ */
+function titleFromFirstMessage(first) {
+    const role = typeof first?.role === 'string' ? first.role : undefined;
+    const text = typeof first?.text === 'string' ? first.text : '';
+    if (role === 'user' && text.trim())
+        return titleFrom(text);
+    return titleFrom('');
+}
+/**
+ * Pure mapper: conversation doc data + its first message + message count → the
+ * summary DTO. Null/missing fields default safely and timestamps serialize via
+ * [toIso], so one malformed doc can never throw. Exposed for unit testing.
+ */
+function mapConversationSummary(id, data, first, messageCount) {
+    const d = data ?? {};
+    const count = Number.isFinite(messageCount) ? Math.max(0, Math.trunc(messageCount)) : 0;
+    return {
+        id,
+        title: titleFromFirstMessage(first),
+        createdAt: toIso(d.createdAt),
+        updatedAt: toIso(d.updatedAt),
+        messageCount: count,
+    };
+}
+/**
+ * Pure mapper: a message doc's data → the message DTO. Defaults role/text and
+ * serializes createdAt defensively. Exposed for unit testing.
+ */
+function mapMessage(m) {
+    const data = m ?? {};
+    return {
+        role: typeof data.role === 'string' ? data.role : 'user',
+        text: typeof data.text === 'string' ? data.text : '',
+        createdAt: toIso(data.createdAt),
+    };
 }
 /** Converts a Firestore Timestamp (or ISO string) to an ISO string, or null. */
 function toIso(value) {

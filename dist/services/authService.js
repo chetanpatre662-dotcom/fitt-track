@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.authService = exports.AuthService = void 0;
 const firebase_js_1 = require("../config/firebase.js");
 const userRepository_js_1 = require("../repositories/userRepository.js");
+const roleService_js_1 = require("./roleService.js");
 const logger_js_1 = require("../utils/logger.js");
 /**
  * Auth-related business logic that requires the Admin SDK.
@@ -15,7 +16,11 @@ class AuthService {
      */
     async verifyAndSync(params) {
         const { account } = await userRepository_js_1.userRepository.ensureAccount(params);
-        return account;
+        // Inject the server-trusted role. It is resolved (never taken from the
+        // client) and never written back by this call, so legacy accounts stay
+        // untouched while still routing correctly.
+        const role = await roleService_js_1.roleService.resolveRole(params.uid);
+        return { ...account, role };
     }
     /**
      * Fully deletes a user: Firestore data, their Storage folder, and the

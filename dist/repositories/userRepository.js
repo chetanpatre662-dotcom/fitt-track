@@ -36,18 +36,45 @@ class UserRepository {
             await ref.set(data);
             return { account: { ...data, createdAt: null, updatedAt: null }, created: true };
         }
-        // Keep email/verification status fresh on each verify call.
+        // Only touch the doc when a tracked field actually changed, so an
+        // unchanged reopen/login produces no Firestore write (and never rewrites
+        // createdAt). email/emailVerified are the only fields verify can refresh.
+        const existing = snap.data() ?? {};
+        const emailChanged = existing.email !== params.email;
+        const verifiedChanged = existing.emailVerified !== params.emailVerified;
+        if (!emailChanged && !verifiedChanged) {
+            return { account: existing, created: false };
+        }
         const patch = {
             email: params.email,
             emailVerified: params.emailVerified,
             updatedAt: firebase_js_1.admin.firestore.FieldValue.serverTimestamp(),
         };
         await ref.set(patch, { merge: true });
-        return { account: { ...snap.data(), ...patch }, created: false };
+        return { account: { ...existing, ...patch }, created: false };
     }
-    /** Adds an FCM token to the account (idempotent via arrayUnion). */
+    /**
+     * Returns the stored role for the account, or null when no role field is
+     * present (legacy accounts). Never writes — role is resolved by RoleService.
+     */
+    async getRole(uid) {
+        const snap = await this.doc(uid).get();
+        if (!snap.exists)
+            return null;
+        const role = snap.data()?.role;
+        return typeof role === 'string' ? role : null;
+    }
+    /**
+     * Adds an FCM token to the account. No-op when the token is already stored,
+     * so a reopen/login that re-registers the same token writes nothing.
+     */
     async addFcmToken(uid, token) {
-        await this.doc(uid).set({
+        const ref = this.doc(uid);
+        const snap = await ref.get();
+        const existing = snap.data()?.fcmTokens ?? [];
+        if (existing.includes(token))
+            return;
+        await ref.set({
             fcmTokens: firebase_js_1.admin.firestore.FieldValue.arrayUnion(token),
             updatedAt: firebase_js_1.admin.firestore.FieldValue.serverTimestamp(),
         }, { merge: true });

@@ -24,6 +24,8 @@ const routine_routes_js_1 = __importDefault(require("./routes/routine.routes.js"
 const notification_routes_js_1 = __importDefault(require("./routes/notification.routes.js"));
 const game_routes_js_1 = __importDefault(require("./routes/game.routes.js"));
 const ai_routes_js_1 = __importDefault(require("./routes/ai.routes.js"));
+const trainer_routes_js_1 = __importDefault(require("./routes/trainer.routes.js"));
+const student_routes_js_1 = __importDefault(require("./routes/student.routes.js"));
 /**
  * Builds the Express application. Route modules are mounted here as they are
  * implemented in later slices (auth, profile, workouts, exercises, nutrition,
@@ -61,6 +63,8 @@ function createApp() {
     app.use('/api/notifications', notification_routes_js_1.default);
     app.use('/api/games', game_routes_js_1.default);
     app.use('/api/ai', ai_routes_js_1.default);
+    app.use('/api/trainer', trainer_routes_js_1.default);
+    app.use('/api/student', student_routes_js_1.default);
     app.use(errorHandler_js_1.notFoundHandler);
     app.use(errorHandler_js_1.errorHandler);
     return app;

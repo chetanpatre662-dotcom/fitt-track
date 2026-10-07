@@ -1,9 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.verify = verify;
+exports.linkTrainer = linkTrainer;
 exports.deleteAccount = deleteAccount;
 const auth_js_1 = require("../middleware/auth.js");
 const authService_js_1 = require("../services/authService.js");
+const trainerService_js_1 = require("../services/trainerService.js");
 const http_js_1 = require("../utils/http.js");
 /**
  * POST /api/auth/verify
@@ -20,6 +22,18 @@ async function verify(req, res) {
         displayName: req.auth?.name ?? null,
     });
     (0, http_js_1.ok)(res, { account });
+}
+/**
+ * POST /api/auth/link-trainer
+ * Links the authenticated student to a trainer by referral code. The code is
+ * validated on the backend; an unknown code is a soft success (no link) so a
+ * typo never blocks registration.
+ */
+async function linkTrainer(req, res) {
+    const uid = (0, auth_js_1.requireUid)(req);
+    const { referralCode } = req.body;
+    const result = await trainerService_js_1.trainerService.linkStudent(uid, referralCode);
+    (0, http_js_1.ok)(res, result);
 }
 /**
  * DELETE /api/auth/account

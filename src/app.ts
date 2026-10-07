@@ -18,6 +18,8 @@ import routineRoutes from './routes/routine.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import gameRoutes from './routes/game.routes.js';
 import aiRoutes from './routes/ai.routes.js';
+import trainerRoutes from './routes/trainer.routes.js';
+import studentRoutes from './routes/student.routes.js';
 
 /**
  * Builds the Express application. Route modules are mounted here as they are
@@ -62,6 +64,8 @@ export function createApp(): Application {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/games', gameRoutes);
   app.use('/api/ai', aiRoutes);
+  app.use('/api/trainer', trainerRoutes);
+  app.use('/api/student', studentRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

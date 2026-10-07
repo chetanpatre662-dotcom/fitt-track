@@ -61,6 +61,14 @@ export const profileUpsertSchema = z.object({
   lifestyle: lifestyleSchema,
   targets: targetsSchema.optional(),
   units: z.enum(['metric', 'imperial']).default('metric'),
+  // Trainer association (mirrored from trainerLinks by the backend). Optional
+  // and nullable so independent students and all existing/onboarding upserts
+  // stay valid; the authoritative relationship lives in trainerLinks.
+  trainerId: z.string().min(1).max(128).optional().nullable(),
+  // Whether the student has opted to share progress (incl. photos) with their
+  // trainer. Optional for backward compatibility; defaults to sharing on when
+  // a trainer link exists is handled server-side.
+  shareProgressWithTrainer: z.boolean().optional(),
   // User-defined nutrition meals (e.g. "Pre-workout", "Evening snack").
   // Each has a STABLE id so renaming only changes `name` and existing food
   // logs (tagged with the meal's id) stay associated. Optional + backward

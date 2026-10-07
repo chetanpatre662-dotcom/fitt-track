@@ -76,6 +76,17 @@ export class UserRepository {
   }
 
   /**
+   * Returns the stored role for the account, or null when no role field is
+   * present (legacy accounts). Never writes — role is resolved by RoleService.
+   */
+  async getRole(uid: string): Promise<string | null> {
+    const snap = await this.doc(uid).get();
+    if (!snap.exists) return null;
+    const role = snap.data()?.role;
+    return typeof role === 'string' ? role : null;
+  }
+
+  /**
    * Adds an FCM token to the account. No-op when the token is already stored,
    * so a reopen/login that re-registers the same token writes nothing.
    */

@@ -1,7 +1,9 @@
 import type { Request, Response } from 'express';
 import { requireUid } from '../middleware/auth.js';
 import { authService } from '../services/authService.js';
+import { trainerService } from '../services/trainerService.js';
 import { ok } from '../utils/http.js';
+import type { LinkTrainerInput } from '../validators/trainerValidators.js';
 
 /**
  * POST /api/auth/verify
@@ -18,6 +20,19 @@ export async function verify(req: Request, res: Response): Promise<void> {
     displayName: req.auth?.name ?? null,
   });
   ok(res, { account });
+}
+
+/**
+ * POST /api/auth/link-trainer
+ * Links the authenticated student to a trainer by referral code. The code is
+ * validated on the backend; an unknown code is a soft success (no link) so a
+ * typo never blocks registration.
+ */
+export async function linkTrainer(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const { referralCode } = req.body as LinkTrainerInput;
+  const result = await trainerService.linkStudent(uid, referralCode);
+  ok(res, result);
 }
 
 /**

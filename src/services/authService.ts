@@ -1,5 +1,6 @@
 import { getAuth, getBucket } from '../config/firebase.js';
 import { userRepository } from '../repositories/userRepository.js';
+import { roleService } from './roleService.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -18,7 +19,11 @@ export class AuthService {
     displayName: string | null;
   }): Promise<Record<string, unknown>> {
     const { account } = await userRepository.ensureAccount(params);
-    return account;
+    // Inject the server-trusted role. It is resolved (never taken from the
+    // client) and never written back by this call, so legacy accounts stay
+    // untouched while still routing correctly.
+    const role = await roleService.resolveRole(params.uid);
+    return { ...account, role };
   }
 
   /**

@@ -45,6 +45,8 @@ class NutritionService {
         const entries = rows.map((r) => ({
             id: r.id,
             mealType: r.mealType ?? 'snack',
+            mealId: r.mealId ?? null,
+            mealName: r.mealName ?? null,
             name: r.name ?? '',
             quantity: r.quantity ?? 1,
             calories: r.calories ?? 0,
@@ -59,10 +61,13 @@ class NutritionService {
         return { dateKey, entries, ...grouped };
     }
     async addFood(uid, input) {
-        const id = nutritionRepository_js_1.nutritionRepository.newLogId(uid);
+        // clientId (when supplied) is the idempotency key -> doc id; it must not be
+        // persisted in the document body.
+        const { clientId, ...data } = input;
+        const id = clientId ?? nutritionRepository_js_1.nutritionRepository.newLogId(uid);
         return nutritionRepository_js_1.nutritionRepository.setLog(uid, id, {
-            ...input,
-            foodId: input.foodId ?? null,
+            ...data,
+            foodId: data.foodId ?? null,
             createdAt: firebase_js_1.admin.firestore.FieldValue.serverTimestamp(),
         });
     }
@@ -70,7 +75,9 @@ class NutritionService {
         const existing = await nutritionRepository_js_1.nutritionRepository.getLog(uid, id);
         if (!existing)
             throw new errors_js_1.NotFoundError('Food log entry not found');
-        return nutritionRepository_js_1.nutritionRepository.setLog(uid, id, { ...input, foodId: input.foodId ?? null });
+        const { clientId, ...data } = input;
+        void clientId; // clientId is an idempotency hint for addFood; not stored on update.
+        return nutritionRepository_js_1.nutritionRepository.setLog(uid, id, { ...data, foodId: data.foodId ?? null });
     }
     async deleteFood(uid, id) {
         const existing = await nutritionRepository_js_1.nutritionRepository.getLog(uid, id);

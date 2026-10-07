@@ -1,0 +1,48 @@
+import { Router } from 'express';
+import { authenticate } from '../middleware/auth.js';
+import { requireTrainer } from '../middleware/role.js';
+import { validate } from '../middleware/validate.js';
+import { asyncHandler } from '../utils/http.js';
+import {
+  dateQuerySchema,
+  historyQuerySchema,
+  studentUidParamsSchema,
+} from '../validators/trainerValidators.js';
+import * as c from '../controllers/trainerController.js';
+
+const router = Router();
+
+// Every trainer route requires a valid token AND a server-resolved trainer role.
+router.use(authenticate);
+router.use(requireTrainer);
+
+router.get('/profile', asyncHandler(c.getProfile));
+router.get('/students', asyncHandler(c.listStudents));
+
+const studentParams = { params: studentUidParamsSchema };
+
+router.get('/students/:studentUid/overview', validate(studentParams), asyncHandler(c.studentOverview));
+router.get(
+  '/students/:studentUid/workouts',
+  validate({ ...studentParams, query: dateQuerySchema }),
+  asyncHandler(c.studentWorkouts),
+);
+router.get(
+  '/students/:studentUid/workouts/history',
+  validate({ ...studentParams, query: historyQuerySchema }),
+  asyncHandler(c.studentWorkoutHistory),
+);
+router.get(
+  '/students/:studentUid/nutrition',
+  validate({ ...studentParams, query: dateQuerySchema }),
+  asyncHandler(c.studentNutrition),
+);
+router.get(
+  '/students/:studentUid/water',
+  validate({ ...studentParams, query: dateQuerySchema }),
+  asyncHandler(c.studentWater),
+);
+router.get('/students/:studentUid/progress', validate(studentParams), asyncHandler(c.studentProgress));
+router.get('/students/:studentUid/photos', validate(studentParams), asyncHandler(c.studentPhotos));
+
+export default router;

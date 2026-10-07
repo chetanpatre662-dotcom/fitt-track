@@ -35,12 +35,15 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const auth_js_1 = require("../middleware/auth.js");
+const validate_js_1 = require("../middleware/validate.js");
 const http_js_1 = require("../utils/http.js");
 const authController = __importStar(require("../controllers/authController.js"));
+const trainerValidators_js_1 = require("../validators/trainerValidators.js");
 const router = (0, express_1.Router)();
 // All auth routes require a valid Firebase ID token.
 router.use(auth_js_1.authenticate);
 router.post('/verify', (0, http_js_1.asyncHandler)(authController.verify));
+router.post('/link-trainer', (0, validate_js_1.validate)({ body: trainerValidators_js_1.linkTrainerSchema }), (0, http_js_1.asyncHandler)(authController.linkTrainer));
 router.delete('/account', (0, http_js_1.asyncHandler)(authController.deleteAccount));
 exports.default = router;
 //# sourceMappingURL=auth.routes.js.map

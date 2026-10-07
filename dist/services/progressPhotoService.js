@@ -5,6 +5,8 @@ const firebase_js_1 = require("../config/firebase.js");
 const progressPhotoRepository_js_1 = require("../repositories/progressPhotoRepository.js");
 const errors_js_1 = require("../utils/errors.js");
 const logger_js_1 = require("../utils/logger.js");
+/** TTL for trainer-facing progress-photo signed URLs (15 minutes). */
+const SIGNED_URL_TTL_MS = 15 * 60 * 1000;
 /**
  * Progress-photo metadata service. Photos are private per user: the storage
  * path MUST live under the caller's own users/{uid}/ prefix, so one user can
@@ -33,6 +35,34 @@ class ProgressPhotoService {
     async list(uid) {
         const rows = await progressPhotoRepository_js_1.progressPhotoRepository.list(uid);
         return rows.map((r) => ({ ...r, takenAt: toIso(r.takenAt) }));
+    }
+    /**
+     * Lists a user's progress photos with short-lived (read-only) V4 signed URLs
+     * so an authorized trainer can view them without the objects ever being
+     * public. Signing is best-effort per photo: a failure yields url:null for
+     * that entry rather than failing the whole request, and the storage.rules
+     * stay unchanged (objects remain private; access is only via these URLs).
+     */
+    async listWithSignedUrls(uid) {
+        const rows = await progressPhotoRepository_js_1.progressPhotoRepository.list(uid);
+        const expires = Date.now() + SIGNED_URL_TTL_MS;
+        const bucket = (0, firebase_js_1.getBucket)();
+        return Promise.all(rows.map(async (r) => {
+            const storagePath = r.storagePath;
+            let url = null;
+            if (storagePath) {
+                try {
+                    const [signed] = await bucket
+                        .file(storagePath)
+                        .getSignedUrl({ action: 'read', expires });
+                    url = signed;
+                }
+                catch (err) {
+                    logger_js_1.logger.warn({ err, uid }, 'Failed to sign progress photo URL (continuing)');
+                }
+            }
+            return { ...r, takenAt: toIso(r.takenAt), url };
+        }));
     }
     /**
      * Deletes a photo's metadata AND its Storage object, so deleting never leaves
