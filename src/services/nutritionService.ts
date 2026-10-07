@@ -48,6 +48,8 @@ export class NutritionService {
     const entries: FoodLogEntry[] = rows.map((r) => ({
       id: r.id as string,
       mealType: (r.mealType as FoodLogEntry['mealType']) ?? 'snack',
+      mealId: (r.mealId as string) ?? null,
+      mealName: (r.mealName as string) ?? null,
       name: (r.name as string) ?? '',
       quantity: (r.quantity as number) ?? 1,
       calories: (r.calories as number) ?? 0,
@@ -63,10 +65,13 @@ export class NutritionService {
   }
 
   async addFood(uid: string, input: FoodLogUpsertInput): Promise<Record<string, unknown>> {
-    const id = nutritionRepository.newLogId(uid);
+    // clientId (when supplied) is the idempotency key -> doc id; it must not be
+    // persisted in the document body.
+    const { clientId, ...data } = input;
+    const id = clientId ?? nutritionRepository.newLogId(uid);
     return nutritionRepository.setLog(uid, id, {
-      ...input,
-      foodId: input.foodId ?? null,
+      ...data,
+      foodId: data.foodId ?? null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   }
@@ -74,7 +79,9 @@ export class NutritionService {
   async updateFood(uid: string, id: string, input: FoodLogUpsertInput): Promise<Record<string, unknown>> {
     const existing = await nutritionRepository.getLog(uid, id);
     if (!existing) throw new NotFoundError('Food log entry not found');
-    return nutritionRepository.setLog(uid, id, { ...input, foodId: input.foodId ?? null });
+    const { clientId, ...data } = input;
+    void clientId; // clientId is an idempotency hint for addFood; not stored on update.
+    return nutritionRepository.setLog(uid, id, { ...data, foodId: data.foodId ?? null });
   }
 
   async deleteFood(uid: string, id: string): Promise<void> {

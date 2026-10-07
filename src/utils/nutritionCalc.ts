@@ -3,6 +3,8 @@ import type { MealType } from '../models/domain.js';
 export interface FoodLogEntry {
   id?: string;
   mealType: MealType;
+  mealId?: string | null;
+  mealName?: string | null;
   name: string;
   quantity: number;
   calories: number;

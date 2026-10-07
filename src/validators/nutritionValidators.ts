@@ -6,6 +6,10 @@ import { commonSchemas } from '../middleware/validate.js';
 export const foodLogUpsertSchema = z.object({
   dateKey: commonSchemas.dateKey,
   mealType: z.enum(MEAL_TYPES),
+  // Client-supplied idempotency key: when present it becomes the Firestore doc
+  // id so a slow-network re-tap writes the same doc instead of duplicating.
+  // Stripped from the stored payload (it only drives the id).
+  clientId: z.string().min(1).max(200).optional(),
   // Stable id + label for a user-defined meal (used with mealType 'custom').
   // mealId is the durable association (survives meal renames); mealName is the
   // label at log time. Both optional/nullable so existing historical logs
