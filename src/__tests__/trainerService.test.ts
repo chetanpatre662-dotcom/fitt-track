@@ -559,8 +559,13 @@ describe('RoleService.resolveRole (trainer vs student)', () => {
     expect(await roleService.resolveRole('trainer-1')).toBe('trainer');
   });
 
-  it('resolves an unknown uid to student', async () => {
-    expect(await roleService.resolveRole('nobody')).toBe('student');
+  it('resolves an unknown uid to user', async () => {
+    expect(await roleService.resolveRole('nobody')).toBe('user');
+  });
+
+  it('resolves a uid with a non-terminal trainerLink to student', async () => {
+    docs.set('trainerLinks/stu-x', { trainerId: TRAINER, status: 'active' });
+    expect(await roleService.resolveRole('stu-x')).toBe('student');
   });
 });
 
