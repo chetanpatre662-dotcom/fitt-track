@@ -21,8 +21,8 @@ const envSchema = z.object({
   FIREBASE_STORAGE_BUCKET: z.string().optional(),
 
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
-  GEMINI_MODEL_FALLBACK: z.string().default('gemini-2.0-flash-lite'),
+ GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
+GEMINI_MODEL_FALLBACK: z.string().default('gemini-3.5-flash-lite'),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
