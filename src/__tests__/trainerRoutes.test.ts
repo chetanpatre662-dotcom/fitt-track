@@ -14,6 +14,7 @@ let docs: Map<string, Doc>;
 const TOKENS: Record<string, string> = {
   'trainer-token': 'trainer-1',
   'student-token': 'student-1',
+  'user-token': 'user-1',
   'newuser-token': 'newuser-1',
   'student2-token': 'student-2',
 };
@@ -130,6 +131,7 @@ beforeEach(() => {
   docs.set('referralCodes/fitche123', { trainerId: 'trainer-1', code: 'FITCHE123', active: true });
   docs.set('users/student-1', { role: 'student' });
   docs.set('users/student-2', { role: 'student' });
+  docs.set('users/user-1', { role: 'user' });
   // trainer-1 owns owned-stu; trainer-2 owns other-stu.
   docs.set('trainerLinks/owned-stu', { trainerId: 'trainer-1', status: 'active' });
   docs.set('users/owned-stu/profile/data', { name: 'Owned', goals: ['gain_muscle'] });
@@ -152,6 +154,21 @@ describe('/api/trainer authorization matrix', () => {
     try {
       const res = await fetch(`${url}/api/trainer/students`, { headers: auth('student-token') });
       expect(res.status).toBe(403);
+    } finally {
+      close();
+    }
+  });
+
+  it('403 when a normal user token hits a trainer route', async () => {
+    // Defense in depth: a `user` role (not just `student`) must be rejected by
+    // requireTrainer. The server resolves the role from Firestore, never the
+    // client, so a tampered client cannot reach trainer-only data.
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students`, { headers: auth('user-token') });
+      expect(res.status).toBe(403);
+      const profile = await fetch(`${url}/api/trainer/profile`, { headers: auth('user-token') });
+      expect(profile.status).toBe(403);
     } finally {
       close();
     }
