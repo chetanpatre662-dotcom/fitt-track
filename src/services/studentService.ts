@@ -10,16 +10,18 @@ import { profileRepository } from '../repositories/profileRepository.js';
  */
 export class StudentService {
   /**
-   * Returns the student's trainer for the "My Trainer" card. Surfaces both an
-   * `active` (approved) link AND a `pending` request so the student sees a
-   * "Pending approval" state after sending a request; a `rejected`/`inactive`
-   * link (or no link) maps to {trainer:null} so the UI falls back to "Add
-   * Trainer". The connected Trainer Code is exposed ONLY once the link is
-   * `active` (approved) — a pending request shows no code yet.
+   * Returns the student's trainer for the "My Trainer" card. Surfaces an
+   * `active` (approved) link, a `pending` request so the student sees a
+   * "Pending approval" state after sending a request, AND a `rejected` link so
+   * the student is told their request was declined and offered a re-request;
+   * an `inactive` link (or no link) maps to {trainer:null} so the UI falls back
+   * to "Add Trainer". The connected Trainer Code is exposed ONLY once the link
+   * is `active` (approved) — pending and rejected show no code.
    */
   async getTrainer(studentUid: string): Promise<{ trainer: Record<string, unknown> | null }> {
     const link = await trainerLinkRepository.get(studentUid);
-    if (!link || (link.status !== 'active' && link.status !== 'pending')) {
+    const surfaced = link && ['active', 'pending', 'rejected'].includes(link.status as string);
+    if (!surfaced) {
       return { trainer: null };
     }
 
