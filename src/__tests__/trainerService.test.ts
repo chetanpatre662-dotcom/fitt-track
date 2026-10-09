@@ -339,6 +339,17 @@ describe('TrainerService.approveRequest / rejectRequest', () => {
     });
   });
 
+  it('double-approve does NOT double-count: 2nd approve rejects 404 and leaves totalStudents at 1', async () => {
+    const first = await trainerService.approveRequest(TRAINER, 'stu-req');
+    expect(first).toMatchObject({ ok: true, status: 'active' });
+    expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(1);
+    // A second approve of the now-active link must throw and not increment again.
+    await expect(trainerService.approveRequest(TRAINER, 'stu-req')).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    expect(docs.get('trainers/trainer-1')?.totalStudents).toBe(1);
+  });
+
   it('reject: pending -> rejected, no mirror, no count change', async () => {
     const res = await trainerService.rejectRequest(TRAINER, 'stu-req');
     expect(res).toMatchObject({ ok: true, status: 'rejected', studentUid: 'stu-req' });
@@ -567,6 +578,11 @@ describe('RoleService.resolveRole (trainer vs student)', () => {
     docs.set('trainerLinks/stu-x', { trainerId: TRAINER, status: 'active' });
     expect(await roleService.resolveRole('stu-x')).toBe('student');
   });
+
+  it('resolves a uid with a terminal (rejected) trainerLink to user, not student', async () => {
+    docs.set('trainerLinks/stu-r', { trainerId: TRAINER, status: 'rejected' });
+    expect(await roleService.resolveRole('stu-r')).toBe('user');
+  });
 });
 
 describe('TrainerService trainer-reads-student round trips', () => {
@@ -633,9 +649,16 @@ describe('StudentService.getTrainer (My Trainer card)', () => {
     expect(res.trainer?.referralCode).toBeNull();
   });
 
-  it('treats a rejected link as no trainer (fall back to Add Trainer)', async () => {
+  it('surfaces a REJECTED link WITHOUT exposing the Trainer Code (so the student is told it was declined)', async () => {
     docs.set('trainerLinks/stu-rej', { trainerId: TRAINER, status: 'rejected' });
-    expect(await studentService.getTrainer('stu-rej')).toEqual({ trainer: null });
+    const res = await studentService.getTrainer('stu-rej');
+    expect(res.trainer).toMatchObject({
+      trainerId: TRAINER,
+      name: 'Alex Carter',
+      associationStatus: 'rejected',
+    });
+    // A declined request never exposes the Trainer Code.
+    expect(res.trainer?.referralCode).toBeNull();
   });
 
   it('treats an inactive link as no trainer', async () => {
