@@ -59,6 +59,9 @@ function makeCollectionRef(base: string) {
   return {
     doc: (id?: string) => makeDocRef(`${base}/${id ?? `auto-${docs.size}`}`),
     where: (f: string, _o: string, v: unknown) => query([[f, v]]),
+    // orderBy is a no-op passthrough for the in-memory mock (ordering is not
+    // asserted at the route level); the service/repository still sorts rows.
+    orderBy: (_f: string, _dir?: string) => makeCollectionRef(base),
     get: async () => {
       const m = entriesIn();
       return { size: m.length, docs: m.map(([p, d]) => ({ id: p.split('/').pop(), data: () => d })) };
@@ -533,5 +536,296 @@ describe('/api/trainer/requests (approve/reject inbox)', () => {
     } finally {
       close();
     }
+  });
+});
+
+describe('/api/trainer per-student data endpoints (measurements/exercise/records)', () => {
+  /** A fake Firestore Timestamp exposing the toDate used by the services. */
+  function ts(iso: string): { toDate: () => Date } {
+    return { toDate: () => new Date(iso) };
+  }
+
+  beforeEach(() => {
+    // owned-stu is active with trainer-1 (seeded by the top-level beforeEach).
+    // Seed the student's real data so the owning trainer gets non-empty reads.
+    docs.set('users/owned-stu/bodyMeasurements/m1', {
+      type: 'body',
+      measuredAt: '2024-01-01T00:00:00.000Z',
+      heightCm: 180,
+      weightKg: 82,
+      note: null,
+    });
+    docs.set('users/owned-stu/bodyMeasurements/m2', {
+      type: 'body',
+      measuredAt: '2024-02-01T00:00:00.000Z',
+      heightCm: 180,
+      weightKg: 80,
+      note: 'cut',
+    });
+    docs.set('users/owned-stu/personalRecords/bench__max_weight', {
+      exerciseId: 'bench',
+      recordType: 'max_weight',
+      value: 100,
+      reps: 1,
+      weightKg: 100,
+    });
+    // A completed workout containing the 'bench' exercise for progression.
+    docs.set('users/owned-stu/workouts/w1', {
+      name: 'Push Day',
+      status: 'completed',
+      startedAt: ts('2024-03-01T10:00:00.000Z'),
+      durationSeconds: 3600,
+      totalVolume: 5000,
+      completedSets: 10,
+      totalReps: 50,
+      muscleGroups: ['chest'],
+      exercises: [
+        {
+          exerciseId: 'bench',
+          sets: [
+            { completed: true, weightKg: 90, reps: 5 },
+            { completed: true, weightKg: 100, reps: 3 },
+          ],
+        },
+      ],
+    });
+  });
+
+  // --- measurements ---------------------------------------------------------
+  describe('GET /students/:studentUid/measurements', () => {
+    it('200 for the owning trainer with the student real data', async () => {
+      const { url, close } = serve();
+      try {
+        const res = await fetch(`${url}/api/trainer/students/owned-stu/measurements`, {
+          headers: auth('trainer-token'),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          success: boolean;
+          data: { measurements: Array<{ weightKg: number; measuredAt: string }> };
+        };
+        expect(body.success).toBe(true);
+        expect(Array.isArray(body.data.measurements)).toBe(true);
+        expect(body.data.measurements).toHaveLength(2);
+        // Newest first (2024-02 before 2024-01).
+        expect(body.data.measurements[0].weightKg).toBe(80);
+      } finally {
+        close();
+      }
+    });
+
+    it('401 unauthenticated', async () => {
+      const { url, close } = serve();
+      try {
+        expect((await fetch(`${url}/api/trainer/students/owned-stu/measurements`)).status).toBe(401);
+      } finally {
+        close();
+      }
+    });
+
+    it('403 for a student and a user role', async () => {
+      const { url, close } = serve();
+      try {
+        expect(
+          (await fetch(`${url}/api/trainer/students/owned-stu/measurements`, { headers: auth('student-token') })).status,
+        ).toBe(403);
+        expect(
+          (await fetch(`${url}/api/trainer/students/owned-stu/measurements`, { headers: auth('user-token') })).status,
+        ).toBe(403);
+      } finally {
+        close();
+      }
+    });
+
+    it("404 for another trainer's student, a non-existent student, and pending/rejected links", async () => {
+      const { url, close } = serve();
+      try {
+        expect(
+          (await fetch(`${url}/api/trainer/students/other-stu/measurements`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+        expect(
+          (await fetch(`${url}/api/trainer/students/ghost/measurements`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+
+        docs.set('trainerLinks/pending-stu', { trainerId: 'trainer-1', status: 'pending' });
+        expect(
+          (await fetch(`${url}/api/trainer/students/pending-stu/measurements`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+
+        docs.set('trainerLinks/rejected-stu', { trainerId: 'trainer-1', status: 'rejected' });
+        expect(
+          (await fetch(`${url}/api/trainer/students/rejected-stu/measurements`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+      } finally {
+        close();
+      }
+    });
+  });
+
+  // --- exercise progression -------------------------------------------------
+  describe('GET /students/:studentUid/exercise', () => {
+    it('200 threads the exerciseId through and returns progression points', async () => {
+      const { url, close } = serve();
+      try {
+        const res = await fetch(
+          `${url}/api/trainer/students/owned-stu/exercise?exerciseId=bench&range=all`,
+          { headers: auth('trainer-token') },
+        );
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          success: boolean;
+          data: {
+            progression: {
+              exerciseId: string;
+              range: string;
+              points: Array<{ date: string; maxWeightKg: number; maxReps: number }>;
+            };
+          };
+        };
+        expect(body.success).toBe(true);
+        expect(body.data.progression.exerciseId).toBe('bench');
+        expect(body.data.progression.range).toBe('all');
+        expect(body.data.progression.points).toHaveLength(1);
+        expect(body.data.progression.points[0].maxWeightKg).toBe(100);
+        expect(body.data.progression.points[0].maxReps).toBe(5);
+      } finally {
+        close();
+      }
+    });
+
+    it('422 when exerciseId is missing (validator)', async () => {
+      const { url, close } = serve();
+      try {
+        const res = await fetch(`${url}/api/trainer/students/owned-stu/exercise`, {
+          headers: auth('trainer-token'),
+        });
+        expect(res.status).toBe(422);
+      } finally {
+        close();
+      }
+    });
+
+    it('401 unauthenticated', async () => {
+      const { url, close } = serve();
+      try {
+        expect(
+          (await fetch(`${url}/api/trainer/students/owned-stu/exercise?exerciseId=bench`)).status,
+        ).toBe(401);
+      } finally {
+        close();
+      }
+    });
+
+    it('403 for a student and a user role', async () => {
+      const { url, close } = serve();
+      try {
+        expect(
+          (await fetch(`${url}/api/trainer/students/owned-stu/exercise?exerciseId=bench`, { headers: auth('student-token') })).status,
+        ).toBe(403);
+        expect(
+          (await fetch(`${url}/api/trainer/students/owned-stu/exercise?exerciseId=bench`, { headers: auth('user-token') })).status,
+        ).toBe(403);
+      } finally {
+        close();
+      }
+    });
+
+    it("404 for another trainer's / non-existent / pending / rejected student", async () => {
+      const { url, close } = serve();
+      try {
+        expect(
+          (await fetch(`${url}/api/trainer/students/other-stu/exercise?exerciseId=bench`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+        expect(
+          (await fetch(`${url}/api/trainer/students/ghost/exercise?exerciseId=bench`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+
+        docs.set('trainerLinks/pending-stu', { trainerId: 'trainer-1', status: 'pending' });
+        expect(
+          (await fetch(`${url}/api/trainer/students/pending-stu/exercise?exerciseId=bench`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+
+        docs.set('trainerLinks/rejected-stu', { trainerId: 'trainer-1', status: 'rejected' });
+        expect(
+          (await fetch(`${url}/api/trainer/students/rejected-stu/exercise?exerciseId=bench`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+      } finally {
+        close();
+      }
+    });
+  });
+
+  // --- personal records -----------------------------------------------------
+  describe('GET /students/:studentUid/records', () => {
+    it('200 for the owning trainer returns the student personal records', async () => {
+      const { url, close } = serve();
+      try {
+        const res = await fetch(`${url}/api/trainer/students/owned-stu/records`, {
+          headers: auth('trainer-token'),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as {
+          success: boolean;
+          data: { personalRecords: Array<{ exerciseId: string; recordType: string; value: number }> };
+        };
+        expect(body.success).toBe(true);
+        expect(Array.isArray(body.data.personalRecords)).toBe(true);
+        expect(body.data.personalRecords).toHaveLength(1);
+        expect(body.data.personalRecords[0]).toMatchObject({
+          exerciseId: 'bench',
+          recordType: 'max_weight',
+          value: 100,
+        });
+      } finally {
+        close();
+      }
+    });
+
+    it('401 unauthenticated', async () => {
+      const { url, close } = serve();
+      try {
+        expect((await fetch(`${url}/api/trainer/students/owned-stu/records`)).status).toBe(401);
+      } finally {
+        close();
+      }
+    });
+
+    it('403 for a student and a user role', async () => {
+      const { url, close } = serve();
+      try {
+        expect(
+          (await fetch(`${url}/api/trainer/students/owned-stu/records`, { headers: auth('student-token') })).status,
+        ).toBe(403);
+        expect(
+          (await fetch(`${url}/api/trainer/students/owned-stu/records`, { headers: auth('user-token') })).status,
+        ).toBe(403);
+      } finally {
+        close();
+      }
+    });
+
+    it("404 for another trainer's / non-existent / pending / rejected student", async () => {
+      const { url, close } = serve();
+      try {
+        expect(
+          (await fetch(`${url}/api/trainer/students/other-stu/records`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+        expect(
+          (await fetch(`${url}/api/trainer/students/ghost/records`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+
+        docs.set('trainerLinks/pending-stu', { trainerId: 'trainer-1', status: 'pending' });
+        expect(
+          (await fetch(`${url}/api/trainer/students/pending-stu/records`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+
+        docs.set('trainerLinks/rejected-stu', { trainerId: 'trainer-1', status: 'rejected' });
+        expect(
+          (await fetch(`${url}/api/trainer/students/rejected-stu/records`, { headers: auth('trainer-token') })).status,
+        ).toBe(404);
+      } finally {
+        close();
+      }
+    });
   });
 });
