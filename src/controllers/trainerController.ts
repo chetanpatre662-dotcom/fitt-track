@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { requireUid } from '../middleware/auth.js';
 import { assertTrainerOwnsStudent } from '../middleware/role.js';
 import { trainerService } from '../services/trainerService.js';
+import type { RangeKey } from '../services/progressService.js';
 import { ok } from '../utils/http.js';
 import type {
   ReferralCodeInput,
@@ -86,6 +87,34 @@ export async function studentPhotos(req: Request, res: Response): Promise<void> 
   await assertTrainerOwnsStudent(trainerId, studentUid);
   const result = await trainerService.studentPhotos(studentUid);
   ok(res, result);
+}
+
+/** GET /api/trainer/students/:studentUid/measurements — body-measurement history. */
+export async function studentMeasurements(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const measurements = await trainerService.studentMeasurements(studentUid);
+  ok(res, { measurements });
+}
+
+/** GET /api/trainer/students/:studentUid/exercise — per-exercise progression. */
+export async function studentExerciseProgression(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const { exerciseId, range } = req.query as unknown as { exerciseId: string; range: RangeKey };
+  const progression = await trainerService.studentExerciseProgression(studentUid, exerciseId, range);
+  ok(res, { progression });
+}
+
+/** GET /api/trainer/students/:studentUid/records — personal records. */
+export async function studentRecords(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const records = await trainerService.studentRecords(studentUid);
+  ok(res, { personalRecords: records });
 }
 
 /** GET /api/trainer/requests — pending connect requests (name + photo). */

@@ -6,6 +6,8 @@ import { workoutRepository } from '../repositories/workoutRepository.js';
 import { nutritionService } from './nutritionService.js';
 import { waterService } from './waterService.js';
 import { progressService, type RangeKey } from './progressService.js';
+import { measurementService } from './measurementService.js';
+import { personalRecordService } from './personalRecordService.js';
 import { progressPhotoService } from './progressPhotoService.js';
 import { roleService } from './roleService.js';
 import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../middleware/role.js';
@@ -626,6 +628,25 @@ export class TrainerService {
 
   async studentProgress(studentUid: string, range: RangeKey = '90d') {
     return progressService.workoutSummary(studentUid, range);
+  }
+
+  /** The student's body-measurement / weight history (newest first). */
+  async studentMeasurements(studentUid: string) {
+    return measurementService.list(studentUid);
+  }
+
+  /** Per-exercise progression series for the student. */
+  async studentExerciseProgression(
+    studentUid: string,
+    exerciseId: string,
+    range: RangeKey = '90d',
+  ) {
+    return progressService.exerciseProgression(studentUid, exerciseId, range);
+  }
+
+  /** The student's personal records (newest first). */
+  async studentRecords(studentUid: string) {
+    return personalRecordService.listAll(studentUid);
   }
 
   /**

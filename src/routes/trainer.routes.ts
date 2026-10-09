@@ -10,6 +10,7 @@ import {
   referralCodeSchema,
   availabilityQuerySchema,
 } from '../validators/trainerValidators.js';
+import { exerciseProgressionQuerySchema } from '../validators/progressValidators.js';
 import * as c from '../controllers/trainerController.js';
 
 const router = Router();
@@ -73,5 +74,20 @@ router.get(
 );
 router.get('/students/:studentUid/progress', validate(studentParams), asyncHandler(c.studentProgress));
 router.get('/students/:studentUid/photos', validate(studentParams), asyncHandler(c.studentPhotos));
+router.get(
+  '/students/:studentUid/measurements',
+  validate(studentParams),
+  asyncHandler(c.studentMeasurements),
+);
+router.get(
+  '/students/:studentUid/exercise',
+  validate({ ...studentParams, query: exerciseProgressionQuerySchema }),
+  asyncHandler(c.studentExerciseProgression),
+);
+router.get(
+  '/students/:studentUid/records',
+  validate(studentParams),
+  asyncHandler(c.studentRecords),
+);
 
 export default router;
