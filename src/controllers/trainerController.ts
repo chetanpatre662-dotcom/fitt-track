@@ -42,8 +42,8 @@ export async function studentWorkouts(req: Request, res: Response): Promise<void
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
   const { date } = req.query as { date?: string };
-  const workouts = await trainerService.studentWorkoutsForDate(studentUid, date ?? todayKey());
-  ok(res, { workouts });
+  const result = await trainerService.studentWorkoutsForDate(studentUid, date ?? todayKey());
+  ok(res, result);
 }
 
 export async function studentWorkoutHistory(req: Request, res: Response): Promise<void> {
@@ -51,8 +51,8 @@ export async function studentWorkoutHistory(req: Request, res: Response): Promis
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
   const { limit } = req.query as unknown as { limit?: number };
-  const history = await trainerService.studentWorkoutHistory(studentUid, limit);
-  ok(res, { history });
+  const result = await trainerService.studentWorkoutHistory(studentUid, limit);
+  ok(res, result);
 }
 
 export async function studentNutrition(req: Request, res: Response): Promise<void> {
@@ -77,8 +77,8 @@ export async function studentProgress(req: Request, res: Response): Promise<void
   const trainerId = requireUid(req);
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
-  const progress = await trainerService.studentProgress(studentUid);
-  ok(res, { progress });
+  const result = await trainerService.studentProgress(studentUid);
+  ok(res, result);
 }
 
 export async function studentPhotos(req: Request, res: Response): Promise<void> {
@@ -94,8 +94,8 @@ export async function studentMeasurements(req: Request, res: Response): Promise<
   const trainerId = requireUid(req);
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
-  const measurements = await trainerService.studentMeasurements(studentUid);
-  ok(res, { measurements });
+  const result = await trainerService.studentMeasurements(studentUid);
+  ok(res, result);
 }
 
 /** GET /api/trainer/students/:studentUid/exercise — per-exercise progression. */
@@ -104,8 +104,8 @@ export async function studentExerciseProgression(req: Request, res: Response): P
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
   const { exerciseId, range } = req.query as unknown as { exerciseId: string; range: RangeKey };
-  const progression = await trainerService.studentExerciseProgression(studentUid, exerciseId, range);
-  ok(res, { progression });
+  const result = await trainerService.studentExerciseProgression(studentUid, exerciseId, range);
+  ok(res, result);
 }
 
 /** GET /api/trainer/students/:studentUid/records — personal records. */
@@ -113,8 +113,8 @@ export async function studentRecords(req: Request, res: Response): Promise<void>
   const trainerId = requireUid(req);
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
-  const records = await trainerService.studentRecords(studentUid);
-  ok(res, { personalRecords: records });
+  const result = await trainerService.studentRecords(studentUid);
+  ok(res, result);
 }
 
 /** GET /api/trainer/requests — pending connect requests (name + photo). */

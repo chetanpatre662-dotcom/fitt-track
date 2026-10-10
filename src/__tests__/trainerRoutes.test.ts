@@ -51,6 +51,9 @@ function makeCollectionRef(base: string) {
     });
   const query = (preds: Array<[string, unknown]>) => ({
     where: (f: string, _o: string, v: unknown) => query([...preds, [f, v]]),
+    // orderBy/limit chain after where() in the repositories; no-op passthroughs.
+    orderBy: (_f: string, _dir?: string) => query(preds),
+    limit: (_n: number) => query(preds),
     get: async () => {
       const m = entriesIn().filter(([, d]) => preds.every(([f, v]) => d[f] === v));
       return { size: m.length, docs: m.map(([p, d]) => ({ id: p.split('/').pop(), data: () => d })) };
@@ -547,6 +550,19 @@ describe('/api/trainer per-student data endpoints (measurements/exercise/records
 
   beforeEach(() => {
     // owned-stu is active with trainer-1 (seeded by the top-level beforeEach).
+    // Enable every granular sharing category so these non-authz data assertions
+    // read real data (per-category gating is covered by the sharing matrix).
+    docs.set('users/owned-stu/profile/data', {
+      name: 'Owned',
+      goals: ['gain_muscle'],
+      trainerSharing: {
+        workoutHistory: true,
+        nutrition: true,
+        measurements: true,
+        progressPhotos: true,
+        progressReports: true,
+      },
+    });
     // Seed the student's real data so the owning trainer gets non-empty reads.
     docs.set('users/owned-stu/bodyMeasurements/m1', {
       type: 'body',
@@ -827,5 +843,129 @@ describe('/api/trainer per-student data endpoints (measurements/exercise/records
         close();
       }
     });
+  });
+});
+
+// --- FEAT-001: per-category sharing gate authorization matrix ---------------
+//
+// For every gated category we assert the full matrix on a representative
+// endpoint:
+//   owner + sharing ON  -> 200 { shared:true, <data> }
+//   owner + sharing OFF -> 200 { shared:false, <empty> }  (ownership passed)
+//   non-owner           -> 404 (ownership 404 fires BEFORE the sharing gate)
+//   non-trainer         -> 403 (requireTrainer fires first)
+// A legacy-boolean student (no granular map) is also checked: it shares ONLY
+// progress photos, so a workout-history read stays {shared:false}.
+describe('/api/trainer per-student sharing gate (FEAT-001)', () => {
+  type Row = { field?: string } & Record<string, unknown>;
+
+  /** path, response key to read, and the sharing category that gates it. */
+  const CASES: Array<{ name: string; path: string; key: string; category: string }> = [
+    { name: 'workouts (today)', path: 'workouts', key: 'workouts', category: 'workoutHistory' },
+    { name: 'workout history', path: 'workouts/history', key: 'history', category: 'workoutHistory' },
+    { name: 'nutrition', path: 'nutrition', key: 'entries', category: 'nutrition' },
+    { name: 'water', path: 'water', key: 'entries', category: 'nutrition' },
+    { name: 'measurements', path: 'measurements', key: 'measurements', category: 'measurements' },
+    { name: 'photos', path: 'photos', key: 'photos', category: 'progressPhotos' },
+    { name: 'progress', path: 'progress', key: 'progress', category: 'progressReports' },
+    { name: 'records', path: 'records', key: 'personalRecords', category: 'progressReports' },
+    {
+      name: 'exercise progression',
+      path: 'exercise?exerciseId=bench&range=all',
+      key: 'progression',
+      category: 'progressReports',
+    },
+  ];
+
+  function setSharing(uid: string, category: string, value: boolean): void {
+    const prev = (docs.get(`users/${uid}/profile/data`) as Record<string, unknown>) ?? {};
+    const map = (prev.trainerSharing as Record<string, unknown>) ?? {};
+    docs.set(`users/${uid}/profile/data`, {
+      ...prev,
+      trainerSharing: { ...map, [category]: value },
+    });
+  }
+
+  for (const c of CASES) {
+    describe(c.name, () => {
+      it('owner + sharing ON -> 200 shared:true', async () => {
+        setSharing('owned-stu', c.category, true);
+        const { url, close } = serve();
+        try {
+          const res = await fetch(`${url}/api/trainer/students/owned-stu/${c.path}`, {
+            headers: auth('trainer-token'),
+          });
+          expect(res.status).toBe(200);
+          const body = (await res.json()) as { data: Row };
+          expect(body.data.shared).toBe(true);
+        } finally {
+          close();
+        }
+      });
+
+      it('owner + sharing OFF -> 200 shared:false (ownership passed first)', async () => {
+        setSharing('owned-stu', c.category, false);
+        const { url, close } = serve();
+        try {
+          const res = await fetch(`${url}/api/trainer/students/owned-stu/${c.path}`, {
+            headers: auth('trainer-token'),
+          });
+          expect(res.status).toBe(200);
+          const body = (await res.json()) as { data: Row };
+          expect(body.data.shared).toBe(false);
+        } finally {
+          close();
+        }
+      });
+
+      it('non-owner -> 404 (before the sharing gate)', async () => {
+        // other-stu belongs to trainer-2; sharing it ON must not change the 404.
+        setSharing('other-stu', c.category, true);
+        const { url, close } = serve();
+        try {
+          const res = await fetch(`${url}/api/trainer/students/other-stu/${c.path}`, {
+            headers: auth('trainer-token'),
+          });
+          expect(res.status).toBe(404);
+        } finally {
+          close();
+        }
+      });
+
+      it('non-trainer -> 403', async () => {
+        const { url, close } = serve();
+        try {
+          const res = await fetch(`${url}/api/trainer/students/owned-stu/${c.path}`, {
+            headers: auth('student-token'),
+          });
+          expect(res.status).toBe(403);
+        } finally {
+          close();
+        }
+      });
+    });
+  }
+
+  it('legacy boolean (shareProgressWithTrainer=true) shares ONLY photos', async () => {
+    docs.set('users/owned-stu/profile/data', { name: 'Owned', shareProgressWithTrainer: true });
+    const { url, close } = serve();
+    try {
+      const photos = await fetch(`${url}/api/trainer/students/owned-stu/photos`, {
+        headers: auth('trainer-token'),
+      });
+      expect(((await photos.json()) as { data: { shared: boolean } }).data.shared).toBe(true);
+
+      const history = await fetch(`${url}/api/trainer/students/owned-stu/workouts/history`, {
+        headers: auth('trainer-token'),
+      });
+      expect(((await history.json()) as { data: { shared: boolean } }).data.shared).toBe(false);
+
+      const nutrition = await fetch(`${url}/api/trainer/students/owned-stu/nutrition`, {
+        headers: auth('trainer-token'),
+      });
+      expect(((await nutrition.json()) as { data: { shared: boolean } }).data.shared).toBe(false);
+    } finally {
+      close();
+    }
   });
 });

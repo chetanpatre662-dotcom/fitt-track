@@ -14,6 +14,7 @@ import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../mi
 import { ConflictError, BadRequestError, ServiceUnavailableError } from '../utils/errors.js';
 import { generateCandidate, normalize, type Rng } from '../utils/referralCode.js';
 import { referralCodeSchema, availabilityQuerySchema } from '../validators/trainerValidators.js';
+import type { SharingCategory } from '../validators/trainerValidators.js';
 
 /** A trainer reference used in connect/switch responses. */
 export interface TrainerRef {
@@ -608,31 +609,80 @@ export class TrainerService {
     };
   }
 
-  /** The student's completed workouts for a given day. */
-  async studentWorkoutsForDate(studentUid: string, dateKey: string): Promise<Record<string, unknown>[]> {
-    const all = await workoutRepository.list(studentUid, { status: 'completed' });
-    return all.filter((w) => toDateKey(w.startedAt) === dateKey);
+  /**
+   * Resolves whether the student currently shares `category` with their
+   * trainer. Precedence:
+   *   1. profile.trainerSharing[category] when it is an explicit boolean;
+   *   2. otherwise, for the legacy `progressPhotos` category only, fall back to
+   *      the old boolean profile.shareProgressWithTrainer === true;
+   *   3. otherwise (map absent, non-photos category) default to false.
+   * This preserves prior consent: a student who had the single legacy toggle ON
+   * still shares progress photos until they set the granular map.
+   */
+  private isShared(
+    profile: Record<string, unknown> | null,
+    category: SharingCategory,
+  ): boolean {
+    const map = profile?.trainerSharing as Record<string, unknown> | undefined;
+    const value = map?.[category];
+    if (typeof value === 'boolean') return value;
+    if (category === 'progressPhotos') return profile?.shareProgressWithTrainer === true;
+    return false;
   }
 
-  async studentWorkoutHistory(studentUid: string, limit = 100): Promise<Record<string, unknown>[]> {
-    return progressService.history(studentUid, 'all', limit);
+  /**
+   * The student's completed workouts for a given day. Gated by the
+   * `workoutHistory` category; returns {shared, workouts} so the caller can
+   * distinguish "nothing today" from "not shared".
+   */
+  async studentWorkoutsForDate(
+    studentUid: string,
+    dateKey: string,
+  ): Promise<{ shared: boolean; workouts: Record<string, unknown>[] }> {
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'workoutHistory')) return { shared: false, workouts: [] };
+    const all = await workoutRepository.list(studentUid, { status: 'completed' });
+    return { shared: true, workouts: all.filter((w) => toDateKey(w.startedAt) === dateKey) };
+  }
+
+  async studentWorkoutHistory(
+    studentUid: string,
+    limit = 100,
+  ): Promise<{ shared: boolean; history: Record<string, unknown>[] }> {
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'workoutHistory')) return { shared: false, history: [] };
+    return { shared: true, history: await progressService.history(studentUid, 'all', limit) };
   }
 
   async studentNutrition(studentUid: string, dateKey: string) {
-    return nutritionService.getDay(studentUid, dateKey);
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'nutrition')) {
+      return { shared: false, dateKey, entries: [], totals: null };
+    }
+    const body = await nutritionService.getDay(studentUid, dateKey);
+    return { shared: true, ...body };
   }
 
   async studentWater(studentUid: string, dateKey: string) {
-    return waterService.getDay(studentUid, dateKey);
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'nutrition')) {
+      return { shared: false, dateKey, totalMl: 0, entries: [] };
+    }
+    const body = await waterService.getDay(studentUid, dateKey);
+    return { shared: true, ...body };
   }
 
   async studentProgress(studentUid: string, range: RangeKey = '90d') {
-    return progressService.workoutSummary(studentUid, range);
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'progressReports')) return { shared: false, progress: null };
+    return { shared: true, progress: await progressService.workoutSummary(studentUid, range) };
   }
 
   /** The student's body-measurement / weight history (newest first). */
   async studentMeasurements(studentUid: string) {
-    return measurementService.list(studentUid);
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'measurements')) return { shared: false, measurements: [] };
+    return { shared: true, measurements: await measurementService.list(studentUid) };
   }
 
   /** Per-exercise progression series for the student. */
@@ -641,23 +691,30 @@ export class TrainerService {
     exerciseId: string,
     range: RangeKey = '90d',
   ) {
-    return progressService.exerciseProgression(studentUid, exerciseId, range);
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'progressReports')) return { shared: false, progression: null };
+    return {
+      shared: true,
+      progression: await progressService.exerciseProgression(studentUid, exerciseId, range),
+    };
   }
 
   /** The student's personal records (newest first). */
   async studentRecords(studentUid: string) {
-    return personalRecordService.listAll(studentUid);
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'progressReports')) return { shared: false, personalRecords: [] };
+    return { shared: true, personalRecords: await personalRecordService.listAll(studentUid) };
   }
 
   /**
-   * Progress photos, gated by the student's shareProgressWithTrainer flag.
-   * When sharing is off, returns an empty list. Photos are returned with
-   * short-lived signed URLs (never public).
+   * Progress photos, gated by the student's progressPhotos sharing category
+   * (which falls back to the legacy shareProgressWithTrainer flag). When
+   * sharing is off, returns an empty list. Photos are returned with short-lived
+   * signed URLs (never public).
    */
   async studentPhotos(studentUid: string): Promise<{ shared: boolean; photos: Record<string, unknown>[] }> {
     const profile = await profileRepository.get(studentUid);
-    const shared = profile?.shareProgressWithTrainer === true;
-    if (!shared) return { shared: false, photos: [] };
+    if (!this.isShared(profile, 'progressPhotos')) return { shared: false, photos: [] };
     const photos = await progressPhotoService.listWithSignedUrls(studentUid);
     return { shared: true, photos };
   }

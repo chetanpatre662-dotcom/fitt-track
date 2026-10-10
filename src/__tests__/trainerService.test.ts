@@ -60,6 +60,10 @@ function makeCollectionRef(base: string) {
 
   const query = (preds: Array<[string, unknown]>) => ({
     where: (field: string, _op: string, value: unknown) => query([...preds, [field, value]]),
+    // orderBy/limit are no-op passthroughs: ordering/paging is not asserted at
+    // this level, but the repositories chain them after where().
+    orderBy: (_field: string, _dir?: string) => query(preds),
+    limit: (_n: number) => query(preds),
     get: async () => {
       const matched = entriesIn().filter(([, data]) => preds.every(([f, v]) => data[f] === v));
       return {
@@ -588,7 +592,21 @@ describe('RoleService.resolveRole (trainer vs student)', () => {
 describe('TrainerService trainer-reads-student round trips', () => {
   beforeEach(() => {
     docs.set('trainerLinks/stu-nut', { trainerId: TRAINER, status: 'active', createdAt: SERVER_TS });
-    docs.set('users/stu-nut/profile/data', { name: 'Nina', goals: ['lose_weight'], weightKg: 60, shareProgressWithTrainer: true });
+    docs.set('users/stu-nut/profile/data', {
+      name: 'Nina',
+      goals: ['lose_weight'],
+      weightKg: 60,
+      shareProgressWithTrainer: true,
+      // Granular sharing: enable every category so the round-trips below read
+      // real data (sharing is now per-category, not a single boolean).
+      trainerSharing: {
+        workoutHistory: true,
+        nutrition: true,
+        measurements: true,
+        progressPhotos: true,
+        progressReports: true,
+      },
+    });
   });
 
   it('reads the student nutrition day through nutritionService', async () => {
@@ -664,5 +682,123 @@ describe('StudentService.getTrainer (My Trainer card)', () => {
   it('treats an inactive link as no trainer', async () => {
     docs.set('trainerLinks/stu-inact', { trainerId: TRAINER, status: 'inactive' });
     expect(await studentService.getTrainer('stu-inact')).toEqual({ trainer: null });
+  });
+
+  it('returns an always-present five-key sharing object (defaults all false when unset)', async () => {
+    docs.set('trainerLinks/stu-ok', { trainerId: TRAINER, status: 'active' });
+    const res = await studentService.getTrainer('stu-ok');
+    expect(res.trainer?.sharing).toEqual({
+      workoutHistory: false,
+      nutrition: false,
+      measurements: false,
+      progressPhotos: false,
+      progressReports: false,
+    });
+  });
+
+  it('maps the legacy shareProgressWithTrainer flag onto progressPhotos in the sharing object', async () => {
+    docs.set('trainerLinks/stu-ok', { trainerId: TRAINER, status: 'active' });
+    docs.set('users/stu-ok/profile/data', { shareProgressWithTrainer: true });
+    const res = await studentService.getTrainer('stu-ok');
+    expect(res.trainer?.sharing).toMatchObject({ progressPhotos: true, nutrition: false });
+  });
+
+  it('omits experience/bio when absent on the trainer doc and surfaces them when present', async () => {
+    docs.set('trainerLinks/stu-a', { trainerId: TRAINER, status: 'active' });
+    const absent = await studentService.getTrainer('stu-a');
+    expect(absent.trainer).not.toHaveProperty('experience');
+    expect(absent.trainer).not.toHaveProperty('bio');
+
+    docs.set('trainers/trainer-1', {
+      ...(docs.get('trainers/trainer-1') as Record<string, unknown>),
+      experience: '5 years',
+      bio: 'Strength coach',
+    });
+    const present = await studentService.getTrainer('stu-a');
+    expect(present.trainer).toMatchObject({ experience: '5 years', bio: 'Strength coach' });
+  });
+});
+
+describe('TrainerService per-category sharing gate (isShared via loaders)', () => {
+  beforeEach(() => {
+    docs.set('trainerLinks/stu-share', { trainerId: TRAINER, status: 'active' });
+  });
+
+  it('map present: each category gates ONLY its own loaders', async () => {
+    docs.set('users/stu-share/profile/data', {
+      trainerSharing: {
+        workoutHistory: true,
+        nutrition: false,
+        measurements: false,
+        progressPhotos: false,
+        progressReports: false,
+      },
+    });
+    expect((await trainerService.studentWorkoutsForDate('stu-share', '2026-01-01')).shared).toBe(true);
+    expect((await trainerService.studentWorkoutHistory('stu-share')).shared).toBe(true);
+    expect((await trainerService.studentNutrition('stu-share', '2026-01-01')).shared).toBe(false);
+    expect((await trainerService.studentWater('stu-share', '2026-01-01')).shared).toBe(false);
+    expect((await trainerService.studentMeasurements('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentPhotos('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentProgress('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentRecords('stu-share')).shared).toBe(false);
+  });
+
+  it('map absent + legacy true -> ONLY progressPhotos shared, everything else false', async () => {
+    docs.set('users/stu-share/profile/data', { shareProgressWithTrainer: true });
+    expect((await trainerService.studentPhotos('stu-share')).shared).toBe(true);
+    expect((await trainerService.studentWorkoutHistory('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentNutrition('stu-share', '2026-01-01')).shared).toBe(false);
+    expect((await trainerService.studentMeasurements('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentProgress('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentRecords('stu-share')).shared).toBe(false);
+  });
+
+  it('map absent + no legacy flag -> all categories false', async () => {
+    docs.set('users/stu-share/profile/data', { name: 'No Sharing' });
+    expect((await trainerService.studentPhotos('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentWorkoutHistory('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentNutrition('stu-share', '2026-01-01')).shared).toBe(false);
+    expect((await trainerService.studentMeasurements('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentProgress('stu-share')).shared).toBe(false);
+    expect((await trainerService.studentRecords('stu-share')).shared).toBe(false);
+  });
+
+  it('an explicit granular false overrides a legacy true for progressPhotos', async () => {
+    docs.set('users/stu-share/profile/data', {
+      shareProgressWithTrainer: true,
+      trainerSharing: { progressPhotos: false },
+    });
+    expect((await trainerService.studentPhotos('stu-share')).shared).toBe(false);
+  });
+});
+
+describe('StudentService.setSharing (granular)', () => {
+  it('merges a one-key patch into an empty map and resolves all five keys', async () => {
+    const result = await studentService.setSharing('stu-set', { nutrition: true });
+    expect(result).toEqual({
+      workoutHistory: false,
+      nutrition: true,
+      measurements: false,
+      progressPhotos: false,
+      progressReports: false,
+    });
+    expect((docs.get('users/stu-set/profile/data') as Record<string, unknown>).trainerSharing)
+      .toMatchObject({ nutrition: true });
+  });
+
+  it('mirrors progressPhotos onto the legacy shareProgressWithTrainer boolean', async () => {
+    await studentService.setSharing('stu-set', { progressPhotos: true });
+    const profile = docs.get('users/stu-set/profile/data') as Record<string, unknown>;
+    expect(profile.shareProgressWithTrainer).toBe(true);
+    const off = await studentService.setSharing('stu-set', { progressPhotos: false });
+    expect(off.progressPhotos).toBe(false);
+    expect((docs.get('users/stu-set/profile/data') as Record<string, unknown>).shareProgressWithTrainer).toBe(false);
+  });
+
+  it('preserves previously-set categories when patching a different one', async () => {
+    await studentService.setSharing('stu-set', { measurements: true });
+    const result = await studentService.setSharing('stu-set', { workoutHistory: true });
+    expect(result).toMatchObject({ measurements: true, workoutHistory: true });
   });
 });

@@ -88,8 +88,47 @@ export const sharingPatchSchema = z.object({
   shareProgressWithTrainer: z.boolean(),
 });
 
+/**
+ * The per-category sharing map keys, in a stable order. Each category gates one
+ * group of trainer per-student reads; see trainerService.isShared for the
+ * category->loader mapping. `progressPhotos` is the legacy category: the old
+ * boolean `shareProgressWithTrainer` maps onto it for backward compatibility.
+ */
+export const SHARING_CATEGORIES = [
+  'workoutHistory',
+  'nutrition',
+  'measurements',
+  'progressPhotos',
+  'progressReports',
+] as const;
+
+export type SharingCategory = (typeof SHARING_CATEGORIES)[number];
+
+/**
+ * Unified body schema for PATCH /student/trainer/sharing. Accepts EITHER the
+ * legacy boolean `shareProgressWithTrainer` OR any subset of the five granular
+ * category booleans (the controller enforces the mutual-exclusion/precedence
+ * rule: granular-only, legacy-only, or 400 when both are present). `.strict()`
+ * rejects unknown keys; `.refine` rejects an empty body. Deliberately NOT a
+ * z.union — a single flat object keeps the error shape predictable.
+ */
+export const sharingPatchUnifiedSchema = z
+  .object({
+    shareProgressWithTrainer: z.boolean().optional(),
+    workoutHistory: z.boolean().optional(),
+    nutrition: z.boolean().optional(),
+    measurements: z.boolean().optional(),
+    progressPhotos: z.boolean().optional(),
+    progressReports: z.boolean().optional(),
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'At least one sharing field is required.',
+  });
+
 export type LinkTrainerInput = z.infer<typeof linkTrainerSchema>;
 export type SharingPatchInput = z.infer<typeof sharingPatchSchema>;
+export type SharingPatchUnifiedInput = z.infer<typeof sharingPatchUnifiedSchema>;
 export type ReferralCodeInput = z.infer<typeof referralCodeSchema>;
 export type AvailabilityQueryInput = z.infer<typeof availabilityQuerySchema>;
 export type RegisterTrainerInput = z.infer<typeof registerTrainerSchema>;

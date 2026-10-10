@@ -8,6 +8,10 @@ import {
   dailyPlanGenerateSchema,
   dailyPlanUpdateSchema,
 } from '../validators/dailyPlanValidators.js';
+import {
+  sharingPatchUnifiedSchema,
+  SHARING_CATEGORIES,
+} from '../validators/trainerValidators.js';
 
 describe('Item 6 — measurement validator', () => {
   it('accepts a valid height/weight record', () => {
@@ -61,5 +65,54 @@ describe('Item 9 — daily plan validators', () => {
 
   it('update rejects an invalid muscle group', () => {
     expect(dailyPlanUpdateSchema.safeParse({ muscleGroups: ['wings'] }).success).toBe(false);
+  });
+});
+
+describe('FEAT-001 — sharingPatchUnifiedSchema', () => {
+  it('exposes the five sharing categories in a stable order', () => {
+    expect(SHARING_CATEGORIES).toEqual([
+      'workoutHistory',
+      'nutrition',
+      'measurements',
+      'progressPhotos',
+      'progressReports',
+    ]);
+  });
+
+  it('accepts a single granular key', () => {
+    expect(sharingPatchUnifiedSchema.safeParse({ nutrition: true }).success).toBe(true);
+  });
+
+  it('accepts multiple granular keys', () => {
+    const r = sharingPatchUnifiedSchema.safeParse({
+      workoutHistory: true,
+      measurements: false,
+      progressReports: true,
+    });
+    expect(r.success).toBe(true);
+  });
+
+  it('accepts the legacy boolean (mapping to progressPhotos is the controller’s job)', () => {
+    expect(sharingPatchUnifiedSchema.safeParse({ shareProgressWithTrainer: true }).success).toBe(true);
+  });
+
+  it('accepts a MIXED legacy+granular body at the schema level (400 enforced in the controller)', () => {
+    // The schema permits the shape; the controller rejects the combination with
+    // a 400. This keeps the error ownership explicit and avoids a z.union.
+    expect(
+      sharingPatchUnifiedSchema.safeParse({ shareProgressWithTrainer: true, nutrition: true }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an empty body', () => {
+    expect(sharingPatchUnifiedSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects a wrong-typed value', () => {
+    expect(sharingPatchUnifiedSchema.safeParse({ nutrition: 'yes' }).success).toBe(false);
+  });
+
+  it('rejects an unknown key (.strict)', () => {
+    expect(sharingPatchUnifiedSchema.safeParse({ bogus: true }).success).toBe(false);
   });
 });
