@@ -126,6 +126,28 @@ export const sharingPatchUnifiedSchema = z
     message: 'At least one sharing field is required.',
   });
 
+/**
+ * Body schema for POST /trainer/students/:studentUid/diet-plan. A trainer may
+ * assign a text plan, an uploaded image (by its Storage path), or both — but at
+ * least one must be present (an empty body is a 400). `null` is accepted for
+ * either field so a trainer can explicitly clear text or the image. The
+ * service enforces the path-ownership guard; `.strict()` rejects unknown keys.
+ */
+export const dietPlanUpsertSchema = z
+  .object({
+    text: z.string().max(5000).nullable().optional(),
+    imageStoragePath: z.string().min(1).max(500).nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (body) =>
+      (typeof body.text === 'string' && body.text.length > 0) ||
+      (typeof body.imageStoragePath === 'string' && body.imageStoragePath.length > 0),
+    { message: 'A diet plan needs text or an image.' },
+  );
+
+export type DietPlanUpsertInput = z.infer<typeof dietPlanUpsertSchema>;
+
 export type LinkTrainerInput = z.infer<typeof linkTrainerSchema>;
 export type SharingPatchInput = z.infer<typeof sharingPatchSchema>;
 export type SharingPatchUnifiedInput = z.infer<typeof sharingPatchUnifiedSchema>;

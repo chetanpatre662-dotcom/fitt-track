@@ -22,5 +22,6 @@ router.patch(
   validate({ body: sharingPatchUnifiedSchema }),
   asyncHandler(c.setSharing),
 );
+router.get('/diet-plan', asyncHandler(c.getDietPlan));
 
 export default router;

@@ -11,6 +11,7 @@ import {
 import {
   sharingPatchUnifiedSchema,
   SHARING_CATEGORIES,
+  dietPlanUpsertSchema,
 } from '../validators/trainerValidators.js';
 
 describe('Item 6 — measurement validator', () => {
@@ -114,5 +115,44 @@ describe('FEAT-001 — sharingPatchUnifiedSchema', () => {
 
   it('rejects an unknown key (.strict)', () => {
     expect(sharingPatchUnifiedSchema.safeParse({ bogus: true }).success).toBe(false);
+  });
+});
+
+describe('FEAT-002 — dietPlanUpsertSchema', () => {
+  it('accepts a text-only plan', () => {
+    expect(dietPlanUpsertSchema.safeParse({ text: 'Oats + eggs' }).success).toBe(true);
+  });
+
+  it('accepts an image-only plan', () => {
+    expect(
+      dietPlanUpsertSchema.safeParse({
+        imageStoragePath: 'users/trainer-1/dietPlans/stu/1.jpg',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts both text and image together', () => {
+    expect(
+      dietPlanUpsertSchema.safeParse({
+        text: 'See image',
+        imageStoragePath: 'users/trainer-1/dietPlans/stu/1.jpg',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an empty body (needs text or image)', () => {
+    expect(dietPlanUpsertSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects a body with only nulls', () => {
+    expect(dietPlanUpsertSchema.safeParse({ text: null, imageStoragePath: null }).success).toBe(false);
+  });
+
+  it('rejects text over the max length', () => {
+    expect(dietPlanUpsertSchema.safeParse({ text: 'a'.repeat(5001) }).success).toBe(false);
+  });
+
+  it('rejects an unknown key (.strict)', () => {
+    expect(dietPlanUpsertSchema.safeParse({ text: 'x', bogus: 1 }).success).toBe(false);
   });
 });

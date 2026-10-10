@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { requireUid } from '../middleware/auth.js';
 import { studentService } from '../services/studentService.js';
 import { trainerService } from '../services/trainerService.js';
+import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
 import { ok } from '../utils/http.js';
 import { BadRequestError } from '../utils/errors.js';
 import {
@@ -66,4 +67,16 @@ export async function setSharing(req: Request, res: Response): Promise<void> {
 
   const result = await studentService.setSharing(uid, patch);
   ok(res, result);
+}
+
+/**
+ * GET /api/student/diet-plan — the student's current trainer-assigned diet
+ * plan, or {dietPlan:null} when there is none / the plan was assigned by a
+ * trainer the student is no longer actively linked to. The image (if any) is
+ * returned as a short-lived backend-signed `imageUrl`, never a direct path.
+ */
+export async function getDietPlan(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const dietPlan = await dietPlanAssignmentService.getForStudent(uid);
+  ok(res, { dietPlan });
 }

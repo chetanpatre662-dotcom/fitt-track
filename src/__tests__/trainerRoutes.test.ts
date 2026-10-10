@@ -92,7 +92,12 @@ vi.mock('../config/firebase.js', () => ({
       return { uid };
     },
   }),
-  getBucket: () => ({ file: () => ({ getSignedUrl: async () => ['https://signed.example/x'] }) }),
+  getBucket: () => ({
+    file: () => ({
+      getSignedUrl: async () => ['https://signed.example/x'],
+      delete: async () => undefined,
+    }),
+  }),
   admin: {
     firestore: {
       FieldValue: { serverTimestamp: () => ({}), increment: (n: number) => ({ __fv: 'increment', n }) },
@@ -964,6 +969,206 @@ describe('/api/trainer per-student sharing gate (FEAT-001)', () => {
         headers: auth('trainer-token'),
       });
       expect(((await nutrition.json()) as { data: { shared: boolean } }).data.shared).toBe(false);
+    } finally {
+      close();
+    }
+  });
+});
+
+// --- FEAT-002: trainer-assigned diet plans ----------------------------------
+//
+// Covers the assign (trainer) + fetch (student) authz matrix:
+//   assign owner       -> 200, plan stored at dietPlans/{studentUid}
+//   assign non-owner   -> 404 (ownership before any write)
+//   assign non-trainer -> 403 (requireTrainer first)
+//   empty body         -> 422 (schema validator)
+//   bad storage path   -> 400 (service path-ownership guard: wrong prefix / '..')
+//   student GET        -> only own ACTIVE-trainer plan; stale/other-trainer -> null
+describe('/api/trainer diet-plan assign (FEAT-002)', () => {
+  it('owner assigns a text plan (200) and stores dietPlans/{studentUid}', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Chicken, rice, broccoli x3' }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { dietPlan: { text: string; imageUrl: string | null } } };
+      expect(body.data.dietPlan.text).toBe('Chicken, rice, broccoli x3');
+      expect(body.data.dietPlan.imageUrl).toBeNull();
+      expect(docs.get('dietPlans/owned-stu')).toMatchObject({
+        trainerId: 'trainer-1',
+        studentUid: 'owned-stu',
+        text: 'Chicken, rice, broccoli x3',
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('owner assigns an image plan under their own prefix (200, signed imageUrl)', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({
+          imageStoragePath: 'users/trainer-1/dietPlans/owned-stu/123.jpg',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { dietPlan: { imageUrl: string | null } } };
+      expect(body.data.dietPlan.imageUrl).toBe('https://signed.example/x');
+    } finally {
+      close();
+    }
+  });
+
+  it("404 assigning to another trainer's student (before any write)", async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/other-stu/diet-plan`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'nope' }),
+      });
+      expect(res.status).toBe(404);
+      expect(docs.has('dietPlans/other-stu')).toBe(false);
+    } finally {
+      close();
+    }
+  });
+
+  it('403 for a student / user role', async () => {
+    const { url, close } = serve();
+    try {
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+            method: 'POST',
+            headers: { ...auth('student-token'), 'content-type': 'application/json' },
+            body: JSON.stringify({ text: 'x' }),
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+            method: 'POST',
+            headers: { ...auth('user-token'), 'content-type': 'application/json' },
+            body: JSON.stringify({ text: 'x' }),
+          })
+        ).status,
+      ).toBe(403);
+    } finally {
+      close();
+    }
+  });
+
+  it('422 on an empty body (schema requires text or image)', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(res.status).toBe(422);
+    } finally {
+      close();
+    }
+  });
+
+  it('400 for a storage path with the wrong prefix', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ imageStoragePath: 'users/other-user/dietPlans/owned-stu/1.jpg' }),
+      });
+      expect(res.status).toBe(400);
+      expect(docs.has('dietPlans/owned-stu')).toBe(false);
+    } finally {
+      close();
+    }
+  });
+
+  it("400 for a storage path containing '..'", async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({
+          imageStoragePath: 'users/trainer-1/dietPlans/owned-stu/../../x.jpg',
+        }),
+      });
+      expect(res.status).toBe(400);
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('/api/student/diet-plan fetch (FEAT-002)', () => {
+  it('returns the plan assigned by the student\'s active trainer', async () => {
+    // student-1 is active with trainer-1, who assigned the plan.
+    docs.set('trainerLinks/student-1', { trainerId: 'trainer-1', status: 'active' });
+    docs.set('dietPlans/student-1', {
+      trainerId: 'trainer-1',
+      studentUid: 'student-1',
+      text: 'Oats + eggs',
+      imageStoragePath: null,
+    });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/student/diet-plan`, { headers: auth('student-token') });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { dietPlan: { text: string } | null } };
+      expect(body.data.dietPlan?.text).toBe('Oats + eggs');
+    } finally {
+      close();
+    }
+  });
+
+  it('returns null when the plan was assigned by a DIFFERENT (stale) trainer', async () => {
+    // student-1 is now active with trainer-1, but the stored plan is trainer-2's.
+    docs.set('trainerLinks/student-1', { trainerId: 'trainer-1', status: 'active' });
+    docs.set('dietPlans/student-1', {
+      trainerId: 'trainer-2',
+      studentUid: 'student-1',
+      text: 'Stale plan',
+    });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/student/diet-plan`, { headers: auth('student-token') });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { dietPlan: unknown } };
+      expect(body.data.dietPlan).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it('returns null when the student has no active link (pending)', async () => {
+    docs.set('trainerLinks/student-1', { trainerId: 'trainer-1', status: 'pending' });
+    docs.set('dietPlans/student-1', { trainerId: 'trainer-1', text: 'x' });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/student/diet-plan`, { headers: auth('student-token') });
+      const body = (await res.json()) as { data: { dietPlan: unknown } };
+      expect(body.data.dietPlan).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it('401 unauthenticated', async () => {
+    const { url, close } = serve();
+    try {
+      expect((await fetch(`${url}/api/student/diet-plan`)).status).toBe(401);
     } finally {
       close();
     }

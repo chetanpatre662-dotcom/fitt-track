@@ -9,6 +9,7 @@ import {
   studentUidParamsSchema,
   referralCodeSchema,
   availabilityQuerySchema,
+  dietPlanUpsertSchema,
 } from '../validators/trainerValidators.js';
 import { exerciseProgressionQuerySchema } from '../validators/progressValidators.js';
 import * as c from '../controllers/trainerController.js';
@@ -88,6 +89,13 @@ router.get(
   '/students/:studentUid/records',
   validate(studentParams),
   asyncHandler(c.studentRecords),
+);
+
+// Assign/replace a student's diet plan (text and/or uploaded image).
+router.post(
+  '/students/:studentUid/diet-plan',
+  validate({ ...studentParams, body: dietPlanUpsertSchema }),
+  asyncHandler(c.assignDietPlan),
 );
 
 export default router;

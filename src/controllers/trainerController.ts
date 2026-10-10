@@ -2,11 +2,13 @@ import type { Request, Response } from 'express';
 import { requireUid } from '../middleware/auth.js';
 import { assertTrainerOwnsStudent } from '../middleware/role.js';
 import { trainerService } from '../services/trainerService.js';
+import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
 import type { RangeKey } from '../services/progressService.js';
 import { ok } from '../utils/http.js';
 import type {
   ReferralCodeInput,
   AvailabilityQueryInput,
+  DietPlanUpsertInput,
 } from '../validators/trainerValidators.js';
 
 function todayKey(): string {
@@ -115,6 +117,20 @@ export async function studentRecords(req: Request, res: Response): Promise<void>
   await assertTrainerOwnsStudent(trainerId, studentUid);
   const result = await trainerService.studentRecords(studentUid);
   ok(res, result);
+}
+
+/**
+ * POST /api/trainer/students/:studentUid/diet-plan — assign/replace the
+ * student's diet plan (text and/or an uploaded image). Ownership (404) is
+ * asserted before any write; the service enforces the storage-path guard.
+ */
+export async function assignDietPlan(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const body = req.body as DietPlanUpsertInput;
+  const dietPlan = await dietPlanAssignmentService.assignForStudent(trainerId, studentUid, body);
+  ok(res, { dietPlan });
 }
 
 /** GET /api/trainer/requests — pending connect requests (name + photo). */

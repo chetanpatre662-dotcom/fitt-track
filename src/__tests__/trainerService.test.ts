@@ -101,7 +101,12 @@ const firestore = {
 
 vi.mock('../config/firebase.js', () => ({
   getFirestore: () => firestore,
-  getBucket: () => ({ file: () => ({ getSignedUrl: async () => ['https://signed.example/x'] }) }),
+  getBucket: () => ({
+    file: () => ({
+      getSignedUrl: async () => ['https://signed.example/x'],
+      delete: async () => undefined,
+    }),
+  }),
   admin: {
     firestore: {
       FieldValue: {
@@ -114,6 +119,7 @@ vi.mock('../config/firebase.js', () => ({
 
 import { trainerService } from '../services/trainerService.js';
 import { studentService } from '../services/studentService.js';
+import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
 import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../middleware/role.js';
 import { roleService } from '../services/roleService.js';
 
@@ -800,5 +806,78 @@ describe('StudentService.setSharing (granular)', () => {
     await studentService.setSharing('stu-set', { measurements: true });
     const result = await studentService.setSharing('stu-set', { workoutHistory: true });
     expect(result).toMatchObject({ measurements: true, workoutHistory: true });
+  });
+});
+
+// --- FEAT-002: diet-plan assignment service ---------------------------------
+describe('DietPlanAssignmentService', () => {
+  it('assigns a text plan and stores trainerId + text at dietPlans/{studentUid}', async () => {
+    const result = await dietPlanAssignmentService.assignForStudent(TRAINER, 'stu-dp', {
+      text: 'Breakfast: oats',
+    });
+    expect(result.text).toBe('Breakfast: oats');
+    expect(result.imageUrl).toBeNull();
+    expect(docs.get('dietPlans/stu-dp')).toMatchObject({
+      trainerId: TRAINER,
+      studentUid: 'stu-dp',
+      text: 'Breakfast: oats',
+      imageStoragePath: null,
+    });
+  });
+
+  it('signs an image URL when an owned storage path is assigned', async () => {
+    const result = await dietPlanAssignmentService.assignForStudent(TRAINER, 'stu-dp', {
+      imageStoragePath: `users/${TRAINER}/dietPlans/stu-dp/img.jpg`,
+    });
+    expect(result.imageUrl).toBe('https://signed.example/x');
+    expect(result.text).toBeNull();
+  });
+
+  it('rejects a storage path outside the trainer prefix (400)', async () => {
+    await expect(
+      dietPlanAssignmentService.assignForStudent(TRAINER, 'stu-dp', {
+        imageStoragePath: 'users/someone-else/dietPlans/stu-dp/img.jpg',
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(docs.has('dietPlans/stu-dp')).toBe(false);
+  });
+
+  it("rejects a storage path containing '..' (400)", async () => {
+    await expect(
+      dietPlanAssignmentService.assignForStudent(TRAINER, 'stu-dp', {
+        imageStoragePath: `users/${TRAINER}/dietPlans/stu-dp/../x.jpg`,
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('replaces a prior plan on re-assignment', async () => {
+    await dietPlanAssignmentService.assignForStudent(TRAINER, 'stu-dp', { text: 'v1' });
+    const v2 = await dietPlanAssignmentService.assignForStudent(TRAINER, 'stu-dp', { text: 'v2' });
+    expect(v2.text).toBe('v2');
+    expect(docs.get('dietPlans/stu-dp')).toMatchObject({ text: 'v2' });
+  });
+
+  it('getForStudent returns the plan only for the active trainer', async () => {
+    docs.set('trainerLinks/stu-dp', { trainerId: TRAINER, status: 'active' });
+    docs.set('dietPlans/stu-dp', { trainerId: TRAINER, studentUid: 'stu-dp', text: 'active plan' });
+    const plan = await dietPlanAssignmentService.getForStudent('stu-dp');
+    expect(plan?.text).toBe('active plan');
+  });
+
+  it('getForStudent returns null for a stale (different-trainer) plan', async () => {
+    docs.set('trainerLinks/stu-dp', { trainerId: TRAINER, status: 'active' });
+    docs.set('dietPlans/stu-dp', { trainerId: 'other-trainer', text: 'stale' });
+    expect(await dietPlanAssignmentService.getForStudent('stu-dp')).toBeNull();
+  });
+
+  it('getForStudent returns null when the link is not active', async () => {
+    docs.set('trainerLinks/stu-dp', { trainerId: TRAINER, status: 'pending' });
+    docs.set('dietPlans/stu-dp', { trainerId: TRAINER, text: 'pending plan' });
+    expect(await dietPlanAssignmentService.getForStudent('stu-dp')).toBeNull();
+  });
+
+  it('getForStudent returns null when there is no plan', async () => {
+    docs.set('trainerLinks/stu-dp', { trainerId: TRAINER, status: 'active' });
+    expect(await dietPlanAssignmentService.getForStudent('stu-dp')).toBeNull();
   });
 });
