@@ -3,12 +3,14 @@ import { requireUid } from '../middleware/auth.js';
 import { assertTrainerOwnsStudent } from '../middleware/role.js';
 import { trainerService } from '../services/trainerService.js';
 import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
+import { assignedWorkoutService } from '../services/assignedWorkoutService.js';
 import type { RangeKey } from '../services/progressService.js';
 import { ok } from '../utils/http.js';
 import type {
   ReferralCodeInput,
   AvailabilityQueryInput,
   DietPlanUpsertInput,
+  AssignWorkoutInput,
 } from '../validators/trainerValidators.js';
 
 function todayKey(): string {
@@ -131,6 +133,20 @@ export async function assignDietPlan(req: Request, res: Response): Promise<void>
   const body = req.body as DietPlanUpsertInput;
   const dietPlan = await dietPlanAssignmentService.assignForStudent(trainerId, studentUid, body);
   ok(res, { dietPlan });
+}
+
+/**
+ * POST /api/trainer/students/:studentUid/workouts/assign — schedule a workout
+ * for the student from a template of exercises. Ownership (404) is asserted
+ * before any write; the body shape/limits are validated by assignWorkoutSchema.
+ */
+export async function assignWorkout(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const body = req.body as AssignWorkoutInput;
+  const assignedWorkout = await assignedWorkoutService.assignForStudent(trainerId, studentUid, body);
+  ok(res, { assignedWorkout });
 }
 
 /** GET /api/trainer/requests — pending connect requests (name + photo). */

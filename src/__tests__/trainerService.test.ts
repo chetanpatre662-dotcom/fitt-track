@@ -120,6 +120,7 @@ vi.mock('../config/firebase.js', () => ({
 import { trainerService } from '../services/trainerService.js';
 import { studentService } from '../services/studentService.js';
 import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
+import { assignedWorkoutService } from '../services/assignedWorkoutService.js';
 import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../middleware/role.js';
 import { roleService } from '../services/roleService.js';
 
@@ -879,5 +880,64 @@ describe('DietPlanAssignmentService', () => {
   it('getForStudent returns null when there is no plan', async () => {
     docs.set('trainerLinks/stu-dp', { trainerId: TRAINER, status: 'active' });
     expect(await dietPlanAssignmentService.getForStudent('stu-dp')).toBeNull();
+  });
+});
+
+// --- FEAT-003: assigned-workout service -------------------------------------
+describe('AssignedWorkoutService', () => {
+  const DRAFT = {
+    name: 'Push Day',
+    scheduledDate: '2026-02-01',
+    exercises: [
+      { exerciseId: 'bench', name: 'Bench Press', targetSets: 3, targetReps: 8, targetWeightKg: 60 },
+      { exerciseId: 'ohp', name: 'Overhead Press', targetSets: 3, targetReps: 10, targetWeightKg: null },
+    ],
+  };
+
+  it('assigns a workout item under assignedWorkouts/{studentUid}/items with trainerId + payload', async () => {
+    const result = await assignedWorkoutService.assignForStudent(TRAINER, 'stu-aw', DRAFT);
+    expect(result.name).toBe('Push Day');
+    expect(result.scheduledDate).toBe('2026-02-01');
+    expect(result.exercises).toHaveLength(2);
+    expect(result.exercises[0]).toMatchObject({ exerciseId: 'bench', name: 'Bench Press', targetSets: 3, targetReps: 8, targetWeightKg: 60 });
+    expect(result.exercises[1].targetWeightKg).toBeNull();
+    expect(result.id).toBeTruthy();
+
+    const stored = docs.get(`assignedWorkouts/stu-aw/items/${result.id}`);
+    expect(stored).toMatchObject({ trainerId: TRAINER, studentUid: 'stu-aw', name: 'Push Day' });
+  });
+
+  it('getForStudent returns only the active trainer items, ordered by scheduledDate', async () => {
+    docs.set('trainerLinks/stu-aw', { trainerId: TRAINER, status: 'active' });
+    docs.set('assignedWorkouts/stu-aw/items/b', {
+      id: 'b', trainerId: TRAINER, studentUid: 'stu-aw', name: 'Later', scheduledDate: '2026-03-01', exercises: [],
+    });
+    docs.set('assignedWorkouts/stu-aw/items/a', {
+      id: 'a', trainerId: TRAINER, studentUid: 'stu-aw', name: 'Sooner', scheduledDate: '2026-02-01', exercises: [],
+    });
+    const items = await assignedWorkoutService.getForStudent('stu-aw');
+    expect(items.map((i) => i.name)).toEqual(['Sooner', 'Later']); // upcoming first
+  });
+
+  it('getForStudent excludes stale (different-trainer) items', async () => {
+    docs.set('trainerLinks/stu-aw', { trainerId: TRAINER, status: 'active' });
+    docs.set('assignedWorkouts/stu-aw/items/mine', {
+      id: 'mine', trainerId: TRAINER, name: 'Mine', scheduledDate: '2026-02-01', exercises: [],
+    });
+    docs.set('assignedWorkouts/stu-aw/items/stale', {
+      id: 'stale', trainerId: 'other-trainer', name: 'Stale', scheduledDate: '2026-01-01', exercises: [],
+    });
+    const items = await assignedWorkoutService.getForStudent('stu-aw');
+    expect(items.map((i) => i.name)).toEqual(['Mine']);
+  });
+
+  it('getForStudent returns [] when the link is not active', async () => {
+    docs.set('trainerLinks/stu-aw', { trainerId: TRAINER, status: 'pending' });
+    docs.set('assignedWorkouts/stu-aw/items/x', { id: 'x', trainerId: TRAINER, name: 'X', exercises: [] });
+    expect(await assignedWorkoutService.getForStudent('stu-aw')).toEqual([]);
+  });
+
+  it('getForStudent returns [] when there is no link', async () => {
+    expect(await assignedWorkoutService.getForStudent('stu-none')).toEqual([]);
   });
 });

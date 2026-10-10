@@ -10,6 +10,7 @@ import {
   referralCodeSchema,
   availabilityQuerySchema,
   dietPlanUpsertSchema,
+  assignWorkoutSchema,
 } from '../validators/trainerValidators.js';
 import { exerciseProgressionQuerySchema } from '../validators/progressValidators.js';
 import * as c from '../controllers/trainerController.js';
@@ -96,6 +97,13 @@ router.post(
   '/students/:studentUid/diet-plan',
   validate({ ...studentParams, body: dietPlanUpsertSchema }),
   asyncHandler(c.assignDietPlan),
+);
+
+// Schedule a workout for a student from a template of exercises.
+router.post(
+  '/students/:studentUid/workouts/assign',
+  validate({ ...studentParams, body: assignWorkoutSchema }),
+  asyncHandler(c.assignWorkout),
 );
 
 export default router;

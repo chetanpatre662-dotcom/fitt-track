@@ -12,6 +12,7 @@ import {
   sharingPatchUnifiedSchema,
   SHARING_CATEGORIES,
   dietPlanUpsertSchema,
+  assignWorkoutSchema,
 } from '../validators/trainerValidators.js';
 
 describe('Item 6 — measurement validator', () => {
@@ -154,5 +155,58 @@ describe('FEAT-002 — dietPlanUpsertSchema', () => {
 
   it('rejects an unknown key (.strict)', () => {
     expect(dietPlanUpsertSchema.safeParse({ text: 'x', bogus: 1 }).success).toBe(false);
+  });
+});
+
+describe('FEAT-003 — assignWorkoutSchema', () => {
+  const validEx = {
+    exerciseId: 'bench',
+    name: 'Bench Press',
+    targetSets: 3,
+    targetReps: 8,
+    targetWeightKg: 60,
+  };
+  const valid = { name: 'Push Day', scheduledDate: '2026-02-01', exercises: [validEx] };
+
+  it('accepts a valid single-exercise workout', () => {
+    expect(assignWorkoutSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('accepts a null target weight (bodyweight move)', () => {
+    expect(
+      assignWorkoutSchema.safeParse({
+        ...valid,
+        exercises: [{ ...validEx, targetWeightKg: null }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an empty exercises array', () => {
+    expect(assignWorkoutSchema.safeParse({ ...valid, exercises: [] }).success).toBe(false);
+  });
+
+  it('rejects a bad scheduledDate', () => {
+    expect(assignWorkoutSchema.safeParse({ ...valid, scheduledDate: '01-02-2026' }).success).toBe(false);
+  });
+
+  it('rejects targetSets below 1', () => {
+    expect(
+      assignWorkoutSchema.safeParse({ ...valid, exercises: [{ ...validEx, targetSets: 0 }] }).success,
+    ).toBe(false);
+  });
+
+  it('rejects more than 60 exercises', () => {
+    const many = Array.from({ length: 61 }, () => validEx);
+    expect(assignWorkoutSchema.safeParse({ ...valid, exercises: many }).success).toBe(false);
+  });
+
+  it('rejects an unknown key (.strict)', () => {
+    expect(assignWorkoutSchema.safeParse({ ...valid, bogus: 1 }).success).toBe(false);
+  });
+
+  it('rejects an unknown key on an exercise (.strict)', () => {
+    expect(
+      assignWorkoutSchema.safeParse({ ...valid, exercises: [{ ...validEx, bogus: 1 }] }).success,
+    ).toBe(false);
   });
 });

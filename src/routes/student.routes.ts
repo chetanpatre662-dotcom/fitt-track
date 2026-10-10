@@ -23,5 +23,6 @@ router.patch(
   asyncHandler(c.setSharing),
 );
 router.get('/diet-plan', asyncHandler(c.getDietPlan));
+router.get('/assigned-workouts', asyncHandler(c.getAssignedWorkouts));
 
 export default router;

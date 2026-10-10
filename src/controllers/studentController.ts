@@ -3,6 +3,7 @@ import { requireUid } from '../middleware/auth.js';
 import { studentService } from '../services/studentService.js';
 import { trainerService } from '../services/trainerService.js';
 import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
+import { assignedWorkoutService } from '../services/assignedWorkoutService.js';
 import { ok } from '../utils/http.js';
 import { BadRequestError } from '../utils/errors.js';
 import {
@@ -79,4 +80,16 @@ export async function getDietPlan(req: Request, res: Response): Promise<void> {
   const uid = requireUid(req);
   const dietPlan = await dietPlanAssignmentService.getForStudent(uid);
   ok(res, { dietPlan });
+}
+
+/**
+ * GET /api/student/assigned-workouts — the student's current trainer-assigned
+ * workout schedules (empty when there is no active link, or filtered to the
+ * current active trainer's items). The student's Start Workout prefills the
+ * existing active-workout logger from these templates.
+ */
+export async function getAssignedWorkouts(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const assignedWorkouts = await assignedWorkoutService.getForStudent(uid);
+  ok(res, { assignedWorkouts });
 }

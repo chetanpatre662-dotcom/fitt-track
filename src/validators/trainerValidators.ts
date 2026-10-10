@@ -148,6 +148,35 @@ export const dietPlanUpsertSchema = z
 
 export type DietPlanUpsertInput = z.infer<typeof dietPlanUpsertSchema>;
 
+/**
+ * Body schema for POST /trainer/students/:studentUid/workouts/assign. A trainer
+ * schedules a named workout for a date with 1..60 exercise lines, each carrying
+ * target sets/reps/weight. `scheduledDate` reuses the shared yyyy-MM-dd key.
+ * targetWeightKg is optional/nullable (bodyweight moves have no load). No
+ * exercise-library existence check happens here — only shape/limits (the
+ * exerciseId is a free string the client sources from the picker). `.strict()`
+ * rejects unknown keys on both the body and each exercise.
+ */
+export const assignWorkoutExerciseSchema = z
+  .object({
+    exerciseId: z.string().min(1).max(128),
+    name: z.string().trim().min(1).max(120),
+    targetSets: z.number().int().min(1).max(50),
+    targetReps: z.number().int().min(0).max(1000),
+    targetWeightKg: z.number().min(0).max(2000).nullable().optional(),
+  })
+  .strict();
+
+export const assignWorkoutSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    scheduledDate: commonSchemas.dateKey,
+    exercises: z.array(assignWorkoutExerciseSchema).min(1).max(60),
+  })
+  .strict();
+
+export type AssignWorkoutInput = z.infer<typeof assignWorkoutSchema>;
+
 export type LinkTrainerInput = z.infer<typeof linkTrainerSchema>;
 export type SharingPatchInput = z.infer<typeof sharingPatchSchema>;
 export type SharingPatchUnifiedInput = z.infer<typeof sharingPatchUnifiedSchema>;

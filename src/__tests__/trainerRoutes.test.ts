@@ -1174,3 +1174,143 @@ describe('/api/student/diet-plan fetch (FEAT-002)', () => {
     }
   });
 });
+
+// --- FEAT-003: assigned-workout schedules -----------------------------------
+//
+// Covers the assign (trainer) + fetch (student) authz matrix:
+//   assign owner       -> 200, item stored under assignedWorkouts/{uid}/items
+//   assign non-owner   -> 404 (ownership before any write)
+//   assign non-trainer -> 403 (requireTrainer first)
+//   invalid body       -> 422 (validator)
+//   student GET        -> only own ACTIVE-trainer items; [] with no active link
+const WORKOUT_DRAFT = {
+  name: 'Push Day',
+  scheduledDate: '2026-02-01',
+  exercises: [
+    { exerciseId: 'bench', name: 'Bench Press', targetSets: 3, targetReps: 8, targetWeightKg: 60 },
+  ],
+};
+
+describe('/api/trainer workouts/assign (FEAT-003)', () => {
+  it('owner assigns a workout (200) and stores an item under assignedWorkouts/{uid}/items', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/workouts/assign`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify(WORKOUT_DRAFT),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { assignedWorkout: { id: string; name: string; exercises: unknown[] } };
+      };
+      expect(body.data.assignedWorkout.name).toBe('Push Day');
+      expect(body.data.assignedWorkout.exercises).toHaveLength(1);
+      const id = body.data.assignedWorkout.id;
+      expect(docs.get(`assignedWorkouts/owned-stu/items/${id}`)).toMatchObject({
+        trainerId: 'trainer-1',
+        studentUid: 'owned-stu',
+        name: 'Push Day',
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it("404 assigning to another trainer's student (no write)", async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/other-stu/workouts/assign`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify(WORKOUT_DRAFT),
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      close();
+    }
+  });
+
+  it('403 for a student and a user role', async () => {
+    const { url, close } = serve();
+    try {
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/owned-stu/workouts/assign`, {
+            method: 'POST',
+            headers: { ...auth('student-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(WORKOUT_DRAFT),
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/owned-stu/workouts/assign`, {
+            method: 'POST',
+            headers: { ...auth('user-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(WORKOUT_DRAFT),
+          })
+        ).status,
+      ).toBe(403);
+    } finally {
+      close();
+    }
+  });
+
+  it('422 for an invalid body (no exercises)', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/workouts/assign`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'Empty', scheduledDate: '2026-02-01', exercises: [] }),
+      });
+      expect(res.status).toBe(422);
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('/api/student/assigned-workouts fetch (FEAT-003)', () => {
+  it('returns only the active trainer items', async () => {
+    docs.set('trainerLinks/student-1', { trainerId: 'trainer-1', status: 'active' });
+    docs.set('assignedWorkouts/student-1/items/a', {
+      id: 'a', trainerId: 'trainer-1', name: 'Mine', scheduledDate: '2026-02-01', exercises: [],
+    });
+    docs.set('assignedWorkouts/student-1/items/stale', {
+      id: 'stale', trainerId: 'trainer-2', name: 'Stale', scheduledDate: '2026-01-01', exercises: [],
+    });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/student/assigned-workouts`, { headers: auth('student-token') });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { assignedWorkouts: Array<{ name: string }> } };
+      expect(body.data.assignedWorkouts.map((w) => w.name)).toEqual(['Mine']);
+    } finally {
+      close();
+    }
+  });
+
+  it('returns [] when the student has no active link (pending)', async () => {
+    docs.set('trainerLinks/student-1', { trainerId: 'trainer-1', status: 'pending' });
+    docs.set('assignedWorkouts/student-1/items/x', { id: 'x', trainerId: 'trainer-1', name: 'X', exercises: [] });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/student/assigned-workouts`, { headers: auth('student-token') });
+      const body = (await res.json()) as { data: { assignedWorkouts: unknown[] } };
+      expect(body.data.assignedWorkouts).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
+  it('401 unauthenticated', async () => {
+    const { url, close } = serve();
+    try {
+      expect((await fetch(`${url}/api/student/assigned-workouts`)).status).toBe(401);
+    } finally {
+      close();
+    }
+  });
+});
