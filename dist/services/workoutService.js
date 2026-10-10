@@ -97,6 +97,25 @@ class WorkoutService {
             totalReps: stats.totalReps,
         });
     }
+    /**
+     * Metadata-only update of the overall workout caption (title) and session
+     * notes. This is the ONLY mutation permitted on a completed workout — it
+     * touches ONLY `name`/`notes` (merge write) and never exercises/sets/stats,
+     * so logged-data immutability (volume/PRs) is preserved. Ownership is enforced
+     * by the `uid`-scoped lookup: a user can only ever reach their own workout, so
+     * another user's id resolves to NotFound (404).
+     */
+    async updateCaption(uid, id, input) {
+        const existing = await workoutRepository_js_1.workoutRepository.get(uid, id);
+        if (!existing)
+            throw new errors_js_1.NotFoundError('Workout not found');
+        const patch = {};
+        if (input.name !== undefined)
+            patch.name = input.name;
+        if (input.notes !== undefined)
+            patch.notes = input.notes ?? null;
+        return workoutRepository_js_1.workoutRepository.set(uid, id, patch);
+    }
     /** Applies a status transition, stamping timestamps/duration as appropriate. */
     async transition(uid, id, to) {
         const existing = await workoutRepository_js_1.workoutRepository.get(uid, id);

@@ -44,6 +44,9 @@ const router = (0, express_1.Router)();
 // read their own trainer card and toggle their own sharing preference.
 router.use(auth_js_1.authenticate);
 router.get('/trainer', (0, http_js_1.asyncHandler)(c.getTrainer));
-router.patch('/trainer/sharing', (0, validate_js_1.validate)({ body: trainerValidators_js_1.sharingPatchSchema }), (0, http_js_1.asyncHandler)(c.setSharing));
+router.post('/connect-trainer', (0, validate_js_1.validate)({ body: trainerValidators_js_1.linkTrainerSchema }), (0, http_js_1.asyncHandler)(c.connectTrainer));
+router.patch('/trainer/sharing', (0, validate_js_1.validate)({ body: trainerValidators_js_1.sharingPatchUnifiedSchema }), (0, http_js_1.asyncHandler)(c.setSharing));
+router.get('/diet-plan', (0, http_js_1.asyncHandler)(c.getDietPlan));
+router.get('/assigned-workouts', (0, http_js_1.asyncHandler)(c.getAssignedWorkouts));
 exports.default = router;
 //# sourceMappingURL=student.routes.js.map

@@ -14,7 +14,7 @@ exports.exerciseListQuerySchema = zod_1.z.object({
     difficulty: zod_1.z.enum(['all', ...domain_js_1.DIFFICULTIES]).optional(),
     type: zod_1.z.enum(['all', ...domain_js_1.EXERCISE_TYPES]).optional(),
     q: zod_1.z.string().trim().max(100).optional(),
-    limit: zod_1.z.coerce.number().int().min(1).max(500).optional(),
+    limit: zod_1.z.coerce.number().int().min(1).max(1000).optional(),
     offset: zod_1.z.coerce.number().int().min(0).optional(),
 });
 exports.exerciseSearchQuerySchema = zod_1.z.object({

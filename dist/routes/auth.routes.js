@@ -44,6 +44,7 @@ const router = (0, express_1.Router)();
 router.use(auth_js_1.authenticate);
 router.post('/verify', (0, http_js_1.asyncHandler)(authController.verify));
 router.post('/link-trainer', (0, validate_js_1.validate)({ body: trainerValidators_js_1.linkTrainerSchema }), (0, http_js_1.asyncHandler)(authController.linkTrainer));
+router.post('/register-trainer', (0, validate_js_1.validate)({ body: trainerValidators_js_1.registerTrainerSchema }), (0, http_js_1.asyncHandler)(authController.registerTrainer));
 router.delete('/account', (0, http_js_1.asyncHandler)(authController.deleteAccount));
 exports.default = router;
 //# sourceMappingURL=auth.routes.js.map

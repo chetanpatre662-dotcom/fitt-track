@@ -5,15 +5,17 @@
  * The Flutter app has an equivalent set of models; keep them in sync.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PR_TYPES = exports.ROUTINE_CATEGORIES = exports.MEAL_TYPES = exports.WORKOUT_STATUSES = exports.GENDERS = exports.ACTIVITY_LEVELS = exports.GOALS = exports.EQUIPMENT = exports.EXERCISE_TYPES = exports.DIFFICULTIES = exports.WORKOUT_LOCATIONS = exports.MUSCLE_GROUPS = void 0;
+exports.TRAINER_LINK_STATUSES = exports.PR_TYPES = exports.ROUTINE_CATEGORIES = exports.MEAL_TYPES = exports.WORKOUT_STATUSES = exports.GENDERS = exports.ACTIVITY_LEVELS = exports.GOALS = exports.EQUIPMENT = exports.EXERCISE_TYPES = exports.DIFFICULTIES = exports.WORKOUT_LOCATIONS = exports.MUSCLE_GROUPS = void 0;
 exports.MUSCLE_GROUPS = [
     'chest',
     'back',
     'shoulders',
     'biceps',
     'triceps',
+    'forearms',
     'legs',
     'glutes',
+    'calves',
     'core',
     'full_body',
     'cardio',
@@ -46,6 +48,7 @@ exports.EQUIPMENT = [
     'jump_rope',
     'squat_rack',
     'ez_bar',
+    'smith_machine',
 ];
 exports.GOALS = [
     'muscle_gain',
@@ -76,4 +79,19 @@ exports.ROUTINE_CATEGORIES = [
     'custom',
 ];
 exports.PR_TYPES = ['max_weight', 'max_reps', 'max_volume', 'best_distance', 'best_time'];
+/**
+ * Lifecycle states for the single trainerLinks/{studentUid} document (one
+ * student belongs to at most one trainer, so the doc is reused across state
+ * transitions rather than a new collection — the single-trainer invariant is
+ * already enforced by the doc being keyed on the student uid).
+ *
+ *  - 'pending'  = the student sent a connect request; awaiting trainer action.
+ *                 Grants NO per-student data access.
+ *  - 'active'   = the APPROVED state (intentionally reused so existing
+ *                 ownership/count/list queries that key on 'active' keep working
+ *                 unchanged). This is the only status that grants data access.
+ *  - 'rejected' = the trainer declined the request.
+ *  - 'inactive' = a previously-active link that was deactivated.
+ */
+exports.TRAINER_LINK_STATUSES = ['pending', 'active', 'rejected', 'inactive'];
 //# sourceMappingURL=domain.js.map

@@ -23,8 +23,17 @@ async function main() {
     logger_js_1.logger.info(`Seeding ${exerciseSeed_js_1.EXERCISES.length} exercises...`);
     const written = await exerciseRepository_js_1.exerciseRepository.upsertMany(exerciseSeed_js_1.EXERCISES);
     logger_js_1.logger.info(`Upserted ${written} exercises.`);
-    // Seed category reference docs.
     const db = (0, firebase_js_1.getFirestore)();
+    // Idempotent cleanup of orphaned legacy docs: ids that were removed from the
+    // seed after an id correction. `upsertMany` only merges and never deletes, so
+    // the stale document would otherwise persist and keep surfacing in list/getAll
+    // results. delete() on a non-existent doc is a no-op, so this is safe to re-run.
+    const legacyDocs = ['Behind-neck'];
+    for (const staleId of legacyDocs) {
+        await db.collection('exercises').doc(staleId).delete();
+    }
+    logger_js_1.logger.info(`Cleaned up ${legacyDocs.length} legacy exercise doc(s).`);
+    // Seed category reference docs.
     const batch = db.batch();
     for (const category of exerciseSeed_js_1.EXERCISE_CATEGORIES) {
         const count = exerciseSeed_js_1.EXERCISES.filter((e) => e.category === category).length;

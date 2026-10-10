@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.workoutIdParamsSchema = exports.workoutListQuerySchema = exports.workoutStatusSchema = exports.workoutUpsertSchema = void 0;
+exports.workoutCaptionSchema = exports.workoutIdParamsSchema = exports.workoutListQuerySchema = exports.workoutStatusSchema = exports.workoutUpsertSchema = void 0;
 const zod_1 = require("zod");
 const domain_js_1 = require("../models/domain.js");
 const setSchema = zod_1.z.object({
@@ -41,4 +41,18 @@ exports.workoutListQuerySchema = zod_1.z.object({
     limit: zod_1.z.coerce.number().int().min(1).max(100).optional(),
 });
 exports.workoutIdParamsSchema = zod_1.z.object({ id: zod_1.z.string().min(1).max(200) });
+/**
+ * Caption/notes-only patch (overall workout title + session notes). This is the
+ * ONLY way to change these two fields on a COMPLETED workout — it never touches
+ * exercises/sets/stats, so logged-data immutability is preserved. Per-exercise
+ * notes live on workoutExerciseSchema and are intentionally separate.
+ */
+exports.workoutCaptionSchema = zod_1.z
+    .object({
+    name: zod_1.z.string().min(1).max(120).optional(),
+    notes: zod_1.z.string().max(2000).nullable().optional(),
+})
+    .refine((v) => v.name !== undefined || v.notes !== undefined, {
+    message: 'Provide name and/or notes.',
+});
 //# sourceMappingURL=workoutValidators.js.map
