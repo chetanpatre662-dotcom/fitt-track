@@ -41,8 +41,17 @@ describe('Item 8 — progress photo validator', () => {
     });
     expect(r.success).toBe(false);
   });
-  it('exposes the seven required categories', () => {
-    expect(PHOTO_CATEGORIES).toEqual(['chest', 'back', 'shoulders', 'arms', 'legs', 'abs', 'full_body']);
+  it('exposes the seven presets plus a custom sentinel', () => {
+    expect(PHOTO_CATEGORIES).toEqual([
+      'chest',
+      'back',
+      'shoulders',
+      'arms',
+      'legs',
+      'abs',
+      'full_body',
+      'custom',
+    ]);
   });
 });
 

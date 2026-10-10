@@ -29,6 +29,7 @@ export class ProgressPhotoService {
       storagePath: input.storagePath,
       category: input.category,
       caption: input.caption ?? null,
+      customLabel: input.customLabel ?? null,
       takenAt: admin.firestore.Timestamp.fromDate(takenAt),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
