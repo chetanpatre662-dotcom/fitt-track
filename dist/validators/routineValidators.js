@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.routineIdParamsSchema = exports.routineCompletionsQuerySchema = exports.routineCompleteSchema = exports.routineUpsertSchema = void 0;
+exports.routineMonthQuerySchema = exports.routineIdParamsSchema = exports.routineCompletionsQuerySchema = exports.routineCompleteSchema = exports.routineUpsertSchema = void 0;
 const zod_1 = require("zod");
 const domain_js_1 = require("../models/domain.js");
 const validate_js_1 = require("../middleware/validate.js");
@@ -22,4 +22,9 @@ exports.routineCompletionsQuerySchema = zod_1.z.object({
     date: validate_js_1.commonSchemas.dateKey.optional(),
 });
 exports.routineIdParamsSchema = zod_1.z.object({ id: zod_1.z.string().min(1).max(200) });
+/** Query for GET /api/routines/month?year=&month= (month is 1-based). */
+exports.routineMonthQuerySchema = zod_1.z.object({
+    year: zod_1.z.coerce.number().int().min(2000).max(2100),
+    month: zod_1.z.coerce.number().int().min(1).max(12),
+});
 //# sourceMappingURL=routineValidators.js.map

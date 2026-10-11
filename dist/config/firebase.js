@@ -66,7 +66,12 @@ function getAuth() {
 }
 /** Returns the Storage bucket, initializing Firebase if necessary. */
 function getBucket() {
-    return initFirebase().storage().bucket();
+    const bucketName = env_js_1.env.FIREBASE_STORAGE_BUCKET;
+    if (!bucketName) {
+        throw new errors_js_1.ConfigurationError('Firebase Storage bucket is not configured. Set FIREBASE_STORAGE_BUCKET ' +
+            '(e.g. fittness-ba0ac.firebasestorage.app) in the backend environment. See SETUP.md.');
+    }
+    return initFirebase().storage().bucket(bucketName);
 }
 /** Returns the Messaging instance, initializing Firebase if necessary. */
 function getMessaging() {

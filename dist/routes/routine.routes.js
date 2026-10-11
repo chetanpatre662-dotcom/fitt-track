@@ -43,6 +43,7 @@ const router = (0, express_1.Router)();
 router.use(auth_js_1.authenticate);
 router.get('/', (0, http_js_1.asyncHandler)(c.listRoutines));
 router.get('/today', (0, validate_js_1.validate)({ query: routineValidators_js_1.routineCompletionsQuerySchema }), (0, http_js_1.asyncHandler)(c.getToday));
+router.get('/month', (0, validate_js_1.validate)({ query: routineValidators_js_1.routineMonthQuerySchema }), (0, http_js_1.asyncHandler)(c.getMonth));
 router.post('/', (0, validate_js_1.validate)({ body: routineValidators_js_1.routineUpsertSchema }), (0, http_js_1.asyncHandler)(c.createRoutine));
 router.put('/:id', (0, validate_js_1.validate)({ params: routineValidators_js_1.routineIdParamsSchema, body: routineValidators_js_1.routineUpsertSchema }), (0, http_js_1.asyncHandler)(c.updateRoutine));
 router.delete('/:id', (0, validate_js_1.validate)({ params: routineValidators_js_1.routineIdParamsSchema }), (0, http_js_1.asyncHandler)(c.deleteRoutine));

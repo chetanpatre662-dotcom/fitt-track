@@ -19,7 +19,7 @@ const envSchema = zod_1.z.object({
     FIREBASE_PROJECT_ID: zod_1.z.string().optional(),
     FIREBASE_CLIENT_EMAIL: zod_1.z.string().optional(),
     FIREBASE_PRIVATE_KEY: zod_1.z.string().optional(),
-    FIREBASE_STORAGE_BUCKET: zod_1.z.string().optional(),
+    FIREBASE_STORAGE_BUCKET: zod_1.z.string().min(1).default('fittness-ba0ac.firebasestorage.app'),
     GEMINI_API_KEY: zod_1.z.string().optional(),
     GEMINI_MODEL: zod_1.z.string().default('gemini-3.5-flash'),
     GEMINI_MODEL_FALLBACK: zod_1.z.string().default('gemini-3.5-flash-lite'),

@@ -45,7 +45,6 @@ router.get('/', (0, validate_js_1.validate)({ query: workoutValidators_js_1.work
 router.post('/', (0, validate_js_1.validate)({ body: workoutValidators_js_1.workoutUpsertSchema }), (0, http_js_1.asyncHandler)(c.createWorkout));
 router.get('/:id', (0, validate_js_1.validate)({ params: workoutValidators_js_1.workoutIdParamsSchema }), (0, http_js_1.asyncHandler)(c.getWorkout));
 router.put('/:id', (0, validate_js_1.validate)({ params: workoutValidators_js_1.workoutIdParamsSchema, body: workoutValidators_js_1.workoutUpsertSchema }), (0, http_js_1.asyncHandler)(c.updateWorkout));
-router.patch('/:id/caption', (0, validate_js_1.validate)({ params: workoutValidators_js_1.workoutIdParamsSchema, body: workoutValidators_js_1.workoutCaptionSchema }), (0, http_js_1.asyncHandler)(c.updateWorkoutCaption));
 router.patch('/:id/status', (0, validate_js_1.validate)({ params: workoutValidators_js_1.workoutIdParamsSchema, body: workoutValidators_js_1.workoutStatusSchema }), (0, http_js_1.asyncHandler)(c.setWorkoutStatus));
 router.post('/:id/duplicate', (0, validate_js_1.validate)({ params: workoutValidators_js_1.workoutIdParamsSchema }), (0, http_js_1.asyncHandler)(c.duplicateWorkout));
 router.delete('/:id', (0, validate_js_1.validate)({ params: workoutValidators_js_1.workoutIdParamsSchema }), (0, http_js_1.asyncHandler)(c.deleteWorkout));

@@ -1,24 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.exerciseService = exports.ExerciseService = exports.LEGACY_ID_ALIASES = void 0;
+exports.exerciseService = exports.ExerciseService = void 0;
 const env_js_1 = require("../config/env.js");
 const exerciseSeed_js_1 = require("../data/exerciseSeed.js");
 const exerciseRepository_js_1 = require("../repositories/exerciseRepository.js");
 const errors_js_1 = require("../utils/errors.js");
 const logger_js_1 = require("../utils/logger.js");
-/**
- * Append-only map of legacy exercise ids to their canonical replacement id.
- * Used to keep historical user references (logged workouts / PRs / history)
- * resolving after an id correction. Resolved at the top of `getById` so it
- * applies on every lookup path, including the Firestore branch.
- *
- * Only add entries here when an id is CORRECTED (never when adding new
- * exercises). The old id must be removed from the seed and the Firestore doc
- * cleaned up in `scripts/seedExercises.ts`.
- */
-exports.LEGACY_ID_ALIASES = {
-    'Behind-neck': 'behind-neck-press',
-};
 /**
  * Exercise library service. Loads from Firestore when configured, otherwise
  * uses the bundled seed so the library is always usable. Applies COMBINABLE
@@ -53,16 +40,13 @@ class ExerciseService {
         return exerciseSeed_js_1.EXERCISES;
     }
     async getById(id) {
-        // Resolve any legacy id first, so the alias applies to all paths below
-        // (seed/cache AND the Firestore branch).
-        const canonical = exports.LEGACY_ID_ALIASES[id] ?? id;
         // Try cache/seed first, then Firestore directly.
         const all = await this.load();
-        const found = all.find((e) => e.id === canonical);
+        const found = all.find((e) => e.id === id);
         if (found)
             return found;
         if ((0, env_js_1.hasFirebaseCredentials)()) {
-            const fromDb = await exerciseRepository_js_1.exerciseRepository.getById(canonical);
+            const fromDb = await exerciseRepository_js_1.exerciseRepository.getById(id);
             if (fromDb)
                 return fromDb;
         }

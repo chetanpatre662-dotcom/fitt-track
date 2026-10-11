@@ -28,6 +28,7 @@ class ProgressPhotoService {
             storagePath: input.storagePath,
             category: input.category,
             caption: input.caption ?? null,
+            customLabel: input.customLabel ?? null,
             takenAt: firebase_js_1.admin.firestore.Timestamp.fromDate(takenAt),
             createdAt: firebase_js_1.admin.firestore.FieldValue.serverTimestamp(),
         });

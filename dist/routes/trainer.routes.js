@@ -67,6 +67,7 @@ router.get('/students/:studentUid/photos', (0, validate_js_1.validate)(studentPa
 router.get('/students/:studentUid/measurements', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentMeasurements));
 router.get('/students/:studentUid/exercise', (0, validate_js_1.validate)({ ...studentParams, query: progressValidators_js_1.exerciseProgressionQuerySchema }), (0, http_js_1.asyncHandler)(c.studentExerciseProgression));
 router.get('/students/:studentUid/records', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentRecords));
+router.get('/students/:studentUid/diet-plan', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentDietPlan));
 // Assign/replace a student's diet plan (text and/or uploaded image).
 router.post('/students/:studentUid/diet-plan', (0, validate_js_1.validate)({ ...studentParams, body: trainerValidators_js_1.dietPlanUpsertSchema }), (0, http_js_1.asyncHandler)(c.assignDietPlan));
 // Schedule a workout for a student from a template of exercises.

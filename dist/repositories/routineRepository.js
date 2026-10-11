@@ -57,6 +57,19 @@ class RoutineRepository {
         const snap = await this.completions(uid).where('dateKey', '==', dateKey).get();
         return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
+    /**
+     * Completion docs whose `dateKey` falls in the inclusive [start, end] range.
+     * Relies on Firestore's automatic single-field `dateKey` ascending index
+     * (a dateKey-only range + orderBy('dateKey')); no composite / no new index.
+     */
+    async listCompletionsInRange(uid, start, end) {
+        const snap = await this.completions(uid)
+            .where('dateKey', '>=', start)
+            .where('dateKey', '<=', end)
+            .orderBy('dateKey')
+            .get();
+        return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    }
     /** Removes all completion docs for a routine (used when the routine is deleted). */
     async deleteCompletionsForRoutine(uid, routineId) {
         const snap = await this.completions(uid).where('routineId', '==', routineId).get();

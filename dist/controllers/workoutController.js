@@ -4,7 +4,6 @@ exports.listWorkouts = listWorkouts;
 exports.createWorkout = createWorkout;
 exports.getWorkout = getWorkout;
 exports.updateWorkout = updateWorkout;
-exports.updateWorkoutCaption = updateWorkoutCaption;
 exports.setWorkoutStatus = setWorkoutStatus;
 exports.deleteWorkout = deleteWorkout;
 exports.duplicateWorkout = duplicateWorkout;
@@ -30,11 +29,6 @@ async function getWorkout(req, res) {
 async function updateWorkout(req, res) {
     const uid = (0, auth_js_1.requireUid)(req);
     const workout = await workoutService_js_1.workoutService.update(uid, req.params.id, req.body);
-    (0, http_js_1.ok)(res, { workout });
-}
-async function updateWorkoutCaption(req, res) {
-    const uid = (0, auth_js_1.requireUid)(req);
-    const workout = await workoutService_js_1.workoutService.updateCaption(uid, req.params.id, req.body);
     (0, http_js_1.ok)(res, { workout });
 }
 async function setWorkoutStatus(req, res) {

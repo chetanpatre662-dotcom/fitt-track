@@ -40,7 +40,6 @@ class ProgressService {
             out.push({
                 id: d.id,
                 name: data.name ?? 'Workout',
-                notes: data.notes ?? null,
                 startedAt,
                 durationSeconds: data.durationSeconds ?? 0,
                 totalVolume: data.totalVolume ?? 0,
@@ -125,7 +124,6 @@ class ProgressService {
             .map((w) => ({
             id: w.id,
             name: w.name,
-            notes: w.notes,
             date: w.startedAt ? w.startedAt.toISOString() : null,
             durationSeconds: w.durationSeconds,
             totalVolume: w.totalVolume,

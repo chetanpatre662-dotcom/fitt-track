@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.listRoutines = listRoutines;
 exports.getToday = getToday;
+exports.getMonth = getMonth;
 exports.createRoutine = createRoutine;
 exports.updateRoutine = updateRoutine;
 exports.deleteRoutine = deleteRoutine;
@@ -26,6 +27,12 @@ async function getToday(req, res) {
     const { date } = req.query;
     const day = await routineService_js_1.routineService.getDay(uid, date ?? todayKey());
     (0, http_js_1.ok)(res, day);
+}
+async function getMonth(req, res) {
+    const uid = (0, auth_js_1.requireUid)(req);
+    const { year, month } = req.query;
+    const data = await routineService_js_1.routineService.getMonth(uid, year, month);
+    (0, http_js_1.ok)(res, data);
 }
 async function createRoutine(req, res) {
     const uid = (0, auth_js_1.requireUid)(req);

@@ -13,6 +13,7 @@ exports.studentMeasurements = studentMeasurements;
 exports.studentExerciseProgression = studentExerciseProgression;
 exports.studentRecords = studentRecords;
 exports.assignDietPlan = assignDietPlan;
+exports.studentDietPlan = studentDietPlan;
 exports.assignWorkout = assignWorkout;
 exports.listRequests = listRequests;
 exports.approveRequest = approveRequest;
@@ -133,6 +134,18 @@ async function assignDietPlan(req, res) {
     await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
     const body = req.body;
     const dietPlan = await dietPlanAssignmentService_js_1.dietPlanAssignmentService.assignForStudent(trainerId, studentUid, body);
+    (0, http_js_1.ok)(res, { dietPlan });
+}
+/**
+ * GET /api/trainer/students/:studentUid/diet-plan — the diet plan the trainer
+ * previously assigned to this student (text + short-lived signed image URL), or
+ * { dietPlan: null } when none exists. Ownership (404) is asserted first.
+ */
+async function studentDietPlan(req, res) {
+    const trainerId = (0, auth_js_1.requireUid)(req);
+    const { studentUid } = req.params;
+    await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
+    const dietPlan = await dietPlanAssignmentService_js_1.dietPlanAssignmentService.getForTrainer(trainerId, studentUid);
     (0, http_js_1.ok)(res, { dietPlan });
 }
 /**
