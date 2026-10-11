@@ -1112,6 +1112,67 @@ describe('/api/trainer diet-plan assign (FEAT-002)', () => {
   });
 });
 
+// --- FEAT-001: trainer diet-plan reader (GET) -------------------------------
+describe('/api/trainer diet-plan GET (FEAT-001)', () => {
+  it('200 { dietPlan } for the owning trainer when a plan exists', async () => {
+    docs.set('dietPlans/owned-stu', {
+      trainerId: 'trainer-1',
+      studentUid: 'owned-stu',
+      text: 'Saved plan',
+      imageStoragePath: null,
+    });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+        headers: auth('trainer-token'),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { dietPlan: { text: string } | null } };
+      expect(body.data.dietPlan?.text).toBe('Saved plan');
+    } finally {
+      close();
+    }
+  });
+
+  it('200 { dietPlan: null } for the owning trainer when no plan exists', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, {
+        headers: auth('trainer-token'),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { dietPlan: unknown } };
+      expect(body.data.dietPlan).toBeNull();
+    } finally {
+      close();
+    }
+  });
+
+  it("404 for another trainer's student", async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/other-stu/diet-plan`, {
+        headers: auth('trainer-token'),
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      close();
+    }
+  });
+
+  it('401 unauthenticated / 403 for a student role', async () => {
+    const { url, close } = serve();
+    try {
+      expect((await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`)).status).toBe(401);
+      expect(
+        (await fetch(`${url}/api/trainer/students/owned-stu/diet-plan`, { headers: auth('student-token') })).status,
+      ).toBe(403);
+    } finally {
+      close();
+    }
+  });
+});
+
 describe('/api/student/diet-plan fetch (FEAT-002)', () => {
   it('returns the plan assigned by the student\'s active trainer', async () => {
     // student-1 is active with trainer-1, who assigned the plan.

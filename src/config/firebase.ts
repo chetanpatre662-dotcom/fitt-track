@@ -64,7 +64,14 @@ export function getAuth(): admin.auth.Auth {
 
 /** Returns the Storage bucket, initializing Firebase if necessary. */
 export function getBucket() {
-  return initFirebase().storage().bucket();
+  const bucketName = env.FIREBASE_STORAGE_BUCKET;
+  if (!bucketName) {
+    throw new ConfigurationError(
+      'Firebase Storage bucket is not configured. Set FIREBASE_STORAGE_BUCKET ' +
+        '(e.g. fittness-ba0ac.firebasestorage.app) in the backend environment. See SETUP.md.',
+    );
+  }
+  return initFirebase().storage().bucket(bucketName);
 }
 
 /** Returns the Messaging instance, initializing Firebase if necessary. */

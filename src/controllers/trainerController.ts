@@ -136,6 +136,19 @@ export async function assignDietPlan(req: Request, res: Response): Promise<void>
 }
 
 /**
+ * GET /api/trainer/students/:studentUid/diet-plan — the diet plan the trainer
+ * previously assigned to this student (text + short-lived signed image URL), or
+ * { dietPlan: null } when none exists. Ownership (404) is asserted first.
+ */
+export async function studentDietPlan(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const dietPlan = await dietPlanAssignmentService.getForTrainer(trainerId, studentUid);
+  ok(res, { dietPlan });
+}
+
+/**
  * POST /api/trainer/students/:studentUid/workouts/assign — schedule a workout
  * for the student from a template of exercises. Ownership (404) is asserted
  * before any write; the body shape/limits are validated by assignWorkoutSchema.

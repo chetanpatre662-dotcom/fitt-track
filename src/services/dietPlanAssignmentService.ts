@@ -109,6 +109,19 @@ export class DietPlanAssignmentService {
   }
 
   /**
+   * Returns the diet plan a trainer previously assigned to one of their own
+   * students, so the trainer UI can display the saved text/photo across
+   * sessions. Returns null when no plan exists or the stored plan was assigned
+   * by a different trainer. The caller is expected to have already asserted
+   * trainer ownership of the student.
+   */
+  async getForTrainer(trainerId: string, studentUid: string): Promise<ResolvedDietPlan | null> {
+    const plan = await dietPlanRepository.get(studentUid);
+    if (plan && plan.trainerId === trainerId) return this.resolve(plan);
+    return null;
+  }
+
+  /**
    * Shapes a stored plan doc into the client response, signing a short-lived
    * READ url for the image when present. Signing is best-effort: a failure
    * yields imageUrl:null (warn log) while the text is still returned, exactly

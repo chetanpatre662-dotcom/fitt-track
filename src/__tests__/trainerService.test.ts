@@ -941,3 +941,61 @@ describe('AssignedWorkoutService', () => {
     expect(await assignedWorkoutService.getForStudent('stu-none')).toEqual([]);
   });
 });
+
+// --- FEAT-001: Progress Photos 500 fix + trainer diet-plan reader -----------
+describe('TrainerService.studentPhotos (signed URLs)', () => {
+  beforeEach(() => {
+    docs.set('trainerLinks/stu-ph', { trainerId: TRAINER, status: 'active' });
+  });
+
+  it('returns {shared:true, photos:[{url, ...}]} with a signed URL when sharing is on', async () => {
+    docs.set('users/stu-ph/profile/data', {
+      trainerSharing: { progressPhotos: true },
+    });
+    docs.set('users/stu-ph/progressPhotos/p1', {
+      storagePath: 'users/stu-ph/progressPhotos/p1.jpg',
+      takenAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const res = await trainerService.studentPhotos('stu-ph');
+    expect(res.shared).toBe(true);
+    expect(res.photos).toHaveLength(1);
+    expect(res.photos[0]).toMatchObject({ url: 'https://signed.example/x' });
+  });
+
+  it('returns {shared:false, photos:[]} without reaching storage when sharing is off', async () => {
+    docs.set('users/stu-ph/profile/data', { name: 'No Share' });
+    const res = await trainerService.studentPhotos('stu-ph');
+    expect(res).toEqual({ shared: false, photos: [] });
+  });
+
+  it('still enforces ownership (404) before reading photos', async () => {
+    docs.set('trainerLinks/other-ph', { trainerId: 'trainer-2', status: 'active' });
+    await expect(assertTrainerOwnsStudent(TRAINER, 'other-ph')).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
+});
+
+describe('DietPlanAssignmentService.getForTrainer (FEAT-001 reader)', () => {
+  it('returns the resolved plan (text + signed imageUrl) when the doc matches the trainer', async () => {
+    docs.set('dietPlans/stu-gt', {
+      trainerId: TRAINER,
+      studentUid: 'stu-gt',
+      text: 'Trainer plan',
+      imageStoragePath: `users/${TRAINER}/dietPlans/stu-gt/img.jpg`,
+    });
+    const plan = await dietPlanAssignmentService.getForTrainer(TRAINER, 'stu-gt');
+    expect(plan?.text).toBe('Trainer plan');
+    expect(plan?.imageUrl).toBe('https://signed.example/x');
+  });
+
+  it('returns null when there is no plan', async () => {
+    expect(await dietPlanAssignmentService.getForTrainer(TRAINER, 'stu-gt')).toBeNull();
+  });
+
+  it('returns null when the stored plan belongs to a different trainer', async () => {
+    docs.set('dietPlans/stu-gt', { trainerId: 'other-trainer', text: 'not yours' });
+    expect(await dietPlanAssignmentService.getForTrainer(TRAINER, 'stu-gt')).toBeNull();
+  });
+});

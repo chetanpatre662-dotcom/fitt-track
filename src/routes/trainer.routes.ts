@@ -91,6 +91,11 @@ router.get(
   validate(studentParams),
   asyncHandler(c.studentRecords),
 );
+router.get(
+  '/students/:studentUid/diet-plan',
+  validate(studentParams),
+  asyncHandler(c.studentDietPlan),
+);
 
 // Assign/replace a student's diet plan (text and/or uploaded image).
 router.post(
