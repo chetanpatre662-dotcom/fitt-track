@@ -6,6 +6,7 @@ import {
   routineCompleteSchema,
   routineCompletionsQuerySchema,
   routineIdParamsSchema,
+  routineMonthQuerySchema,
   routineUpsertSchema,
 } from '../validators/routineValidators.js';
 import * as c from '../controllers/routineController.js';
@@ -15,6 +16,7 @@ router.use(authenticate);
 
 router.get('/', asyncHandler(c.listRoutines));
 router.get('/today', validate({ query: routineCompletionsQuerySchema }), asyncHandler(c.getToday));
+router.get('/month', validate({ query: routineMonthQuerySchema }), asyncHandler(c.getMonth));
 router.post('/', validate({ body: routineUpsertSchema }), asyncHandler(c.createRoutine));
 router.put('/:id', validate({ params: routineIdParamsSchema, body: routineUpsertSchema }), asyncHandler(c.updateRoutine));
 router.delete('/:id', validate({ params: routineIdParamsSchema }), asyncHandler(c.deleteRoutine));

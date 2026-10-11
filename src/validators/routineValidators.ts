@@ -24,5 +24,11 @@ export const routineCompletionsQuerySchema = z.object({
 
 export const routineIdParamsSchema = z.object({ id: z.string().min(1).max(200) });
 
+/** Query for GET /api/routines/month?year=&month= (month is 1-based). */
+export const routineMonthQuerySchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+});
+
 export type RoutineUpsertInput = z.infer<typeof routineUpsertSchema>;
 export type RoutineCompleteInput = z.infer<typeof routineCompleteSchema>;

@@ -25,6 +25,13 @@ export async function getToday(req: Request, res: Response): Promise<void> {
   ok(res, day);
 }
 
+export async function getMonth(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const { year, month } = req.query as unknown as { year: number; month: number };
+  const data = await routineService.getMonth(uid, year, month);
+  ok(res, data);
+}
+
 export async function createRoutine(req: Request, res: Response): Promise<void> {
   const uid = requireUid(req);
   const routine = await routineService.create(uid, req.body as RoutineUpsertInput);
