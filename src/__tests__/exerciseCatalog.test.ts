@@ -209,6 +209,21 @@ describe('exercise catalogue — search', () => {
     expect(find('decline press')).toContain('barbell-decline-bench-press');
     expect(find('decline press')).toContain('smith-decline-bench-press');
   });
+
+  it('twister / oblique rotation entries are searchable', () => {
+    const twister = find('twister');
+    for (const id of [
+      'standing-twister-machine',
+      'sitting-twister-machine',
+      'cable-twister-low-to-high',
+      'cable-twister-high-to-low',
+      'dumbbell-twister-low-to-high',
+      'dumbbell-twister-high-to-low',
+    ]) {
+      expect(twister).toContain(id);
+    }
+    expect(find('oblique').length).toBeGreaterThan(0);
+  });
 });
 
 describe('exercise catalogue — pagination (no silent cap)', () => {
