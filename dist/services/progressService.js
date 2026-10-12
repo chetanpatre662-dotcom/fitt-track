@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.progressService = exports.ProgressService = void 0;
 const firebase_js_1 = require("../config/firebase.js");
+const prCalc_js_1 = require("../utils/prCalc.js");
 function rangeStart(range) {
     const now = Date.now();
     const day = 86_400_000;
@@ -100,17 +101,18 @@ class ProgressService {
             const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
             if (!ex || !w.startedAt)
                 continue;
-            const done = ex.sets.filter((s) => s.completed);
-            if (done.length === 0)
+            const best = (0, prCalc_js_1.bestSetForWorkout)(ex.sets);
+            if (!best)
                 continue;
-            const maxWeightKg = Math.max(...done.map((s) => s.weightKg ?? 0));
-            const maxReps = Math.max(...done.map((s) => s.reps ?? 0));
-            const volume = done.reduce((sum, s) => {
-                const w2 = s.weightKg ?? 0;
-                const r = s.reps ?? 0;
-                return sum + (w2 > 0 && r > 0 ? w2 * r : 0);
-            }, 0);
-            points.push({ date: dateKey(w.startedAt), maxWeightKg, maxReps, totalVolume: volume });
+            // `maxReps` now means the reps performed on the max-weight set (NOT the
+            // max reps of any set); the wire key is kept for backward compatibility.
+            points.push({
+                date: dateKey(w.startedAt),
+                maxWeightKg: best.weightKg,
+                maxReps: best.reps,
+                totalVolume: best.volume,
+                estimated1RmKg: best.estimated1Rm,
+            });
         }
         return { exerciseId, range, points };
     }
