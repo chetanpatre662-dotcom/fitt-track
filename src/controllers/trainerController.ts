@@ -55,8 +55,8 @@ export async function studentWorkoutHistory(req: Request, res: Response): Promis
   const trainerId = requireUid(req);
   const { studentUid } = req.params;
   await assertTrainerOwnsStudent(trainerId, studentUid);
-  const { limit } = req.query as unknown as { limit?: number };
-  const result = await trainerService.studentWorkoutHistory(studentUid, limit);
+  const { limit, cursor } = req.query as unknown as { limit?: number; cursor?: string };
+  const result = await trainerService.studentWorkoutHistory(studentUid, { limit, cursor });
   ok(res, result);
 }
 

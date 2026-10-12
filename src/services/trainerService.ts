@@ -763,13 +763,27 @@ export class TrainerService {
     return { shared: true, workouts: all.filter((w) => toDateKey(w.startedAt) === dateKey) };
   }
 
+  /**
+   * One newest-first page of the student's completed-workout history, gated by
+   * the `workoutHistory` category. Uses the cursor-paginated
+   * `progressService.historyPage` (startedAt-DESC, existing composite index) so
+   * large histories are bounded; the response carries `nextCursor` for a
+   * load-more affordance (null when there are no more pages). `shared:false`
+   * returns an empty page with a null cursor.
+   */
   async studentWorkoutHistory(
     studentUid: string,
-    limit = 100,
-  ): Promise<{ shared: boolean; history: Record<string, unknown>[] }> {
+    opts: { limit?: number; cursor?: string | null } = {},
+  ): Promise<{ shared: boolean; history: Record<string, unknown>[]; nextCursor: string | null }> {
     const profile = await profileRepository.get(studentUid);
-    if (!this.isShared(profile, 'workoutHistory')) return { shared: false, history: [] };
-    return { shared: true, history: await progressService.history(studentUid, 'all', limit) };
+    if (!this.isShared(profile, 'workoutHistory')) {
+      return { shared: false, history: [], nextCursor: null };
+    }
+    const { items, nextCursor } = await progressService.historyPage(studentUid, {
+      limit: opts.limit,
+      cursorStartedAt: opts.cursor,
+    });
+    return { shared: true, history: items, nextCursor };
   }
 
   /**

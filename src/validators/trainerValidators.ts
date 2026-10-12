@@ -108,9 +108,15 @@ export const dateQuerySchema = z.object({
   date: commonSchemas.dateKey.optional(),
 });
 
-/** Optional ?limit= for history reads (1..365). */
+/**
+ * Query for paginated history reads: an optional ?limit= page size (1..100) and
+ * an optional ?cursor= — the ISO `startedAt` of the last item from the previous
+ * page, used to fetch the next newest-first page via the startedAt-DESC cursor
+ * query. Both are optional (first page with the default size when omitted).
+ */
 export const historyQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(365).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  cursor: z.string().min(1).max(64).optional(),
 });
 
 /** Body for the student's progress-sharing toggle. */
