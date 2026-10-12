@@ -14,6 +14,7 @@ import {
   workoutDetailParamsSchema,
   batchStudentUidsSchema,
 } from '../validators/trainerValidators.js';
+import { measurementCreateSchema } from '../validators/measurementValidators.js';
 import { exerciseProgressionQuerySchema } from '../validators/progressValidators.js';
 import * as c from '../controllers/trainerController.js';
 
@@ -100,6 +101,13 @@ router.get(
   '/students/:studentUid/measurements',
   validate(studentParams),
   asyncHandler(c.studentMeasurements),
+);
+// Append a dated body-measurement record for the student (reuses the SAME
+// validator + service as the student path; Admin-SDK-mediated, no rule change).
+router.post(
+  '/students/:studentUid/measurements',
+  validate({ ...studentParams, body: measurementCreateSchema }),
+  asyncHandler(c.addStudentMeasurement),
 );
 router.get(
   '/students/:studentUid/exercise',

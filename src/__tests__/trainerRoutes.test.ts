@@ -101,6 +101,11 @@ vi.mock('../config/firebase.js', () => ({
   admin: {
     firestore: {
       FieldValue: { serverTimestamp: () => ({}), increment: (n: number) => ({ __fv: 'increment', n }) },
+      // A minimal Timestamp whose fromDate() yields an object exposing the
+      // toDate()/toMillis() the measurement service + repository read back.
+      Timestamp: {
+        fromDate: (d: Date) => ({ toDate: () => d, toMillis: () => d.getTime() }),
+      },
     },
   },
 }));
@@ -848,6 +853,156 @@ describe('/api/trainer per-student data endpoints (measurements/exercise/records
         close();
       }
     });
+  });
+});
+
+// --- FEAT-004: trainer writes a student body-measurement -------------------
+//
+// POST /students/:studentUid/measurements is an additive, authorized write that
+// reuses measurementCreateSchema + measurementService.add. Asserts the
+// requireTrainer + assertTrainerOwnsStudent gate, body validation, and that the
+// record lands under users/{studentUid}/bodyMeasurements with type:'body'.
+describe('/api/trainer POST /students/:studentUid/measurements (FEAT-004)', () => {
+  const VALID = { heightCm: 180, weightKg: 81, note: 'trainer check-in' };
+
+  it('owner writes a measurement (200) under users/{studentUid}/bodyMeasurements with type:body', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/measurements`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify(VALID),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        success: boolean;
+        data: { measurement: { id: string; type: string; heightCm: number; weightKg: number } };
+      };
+      expect(body.success).toBe(true);
+      expect(body.data.measurement.type).toBe('body');
+      expect(body.data.measurement.heightCm).toBe(180);
+      expect(body.data.measurement.weightKg).toBe(81);
+      // The write landed under the STUDENT's subcollection (never the trainer's).
+      const written = [...docs.entries()].find(
+        ([p]) => p.startsWith('users/owned-stu/bodyMeasurements/'),
+      );
+      expect(written).toBeTruthy();
+      expect(written?.[1]).toMatchObject({ type: 'body', heightCm: 180, weightKg: 81 });
+      expect(docs.has(`users/trainer-1/bodyMeasurements/${body.data.measurement.id}`)).toBe(false);
+    } finally {
+      close();
+    }
+  });
+
+  it('401 unauthenticated / 403 for a student / 403 for a user role', async () => {
+    const { url, close } = serve();
+    try {
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/owned-stu/measurements`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(VALID),
+          })
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/owned-stu/measurements`, {
+            method: 'POST',
+            headers: { ...auth('student-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(VALID),
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/owned-stu/measurements`, {
+            method: 'POST',
+            headers: { ...auth('user-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(VALID),
+          })
+        ).status,
+      ).toBe(403);
+    } finally {
+      close();
+    }
+  });
+
+  it("404 for another trainer's / non-existent / pending / rejected student (no write)", async () => {
+    const { url, close } = serve();
+    try {
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/other-stu/measurements`, {
+            method: 'POST',
+            headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(VALID),
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        [...docs.keys()].some((p) => p.startsWith('users/other-stu/bodyMeasurements/')),
+      ).toBe(false);
+
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/ghost/measurements`, {
+            method: 'POST',
+            headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(VALID),
+          })
+        ).status,
+      ).toBe(404);
+
+      docs.set('trainerLinks/pending-stu', { trainerId: 'trainer-1', status: 'pending' });
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/pending-stu/measurements`, {
+            method: 'POST',
+            headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(VALID),
+          })
+        ).status,
+      ).toBe(404);
+
+      docs.set('trainerLinks/rejected-stu', { trainerId: 'trainer-1', status: 'rejected' });
+      expect(
+        (
+          await fetch(`${url}/api/trainer/students/rejected-stu/measurements`, {
+            method: 'POST',
+            headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+            body: JSON.stringify(VALID),
+          })
+        ).status,
+      ).toBe(404);
+    } finally {
+      close();
+    }
+  });
+
+  it('422 for an out-of-range height/weight (measurementCreateSchema)', async () => {
+    const { url, close } = serve();
+    try {
+      const tooTall = await fetch(`${url}/api/trainer/students/owned-stu/measurements`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ heightCm: 999, weightKg: 80 }),
+      });
+      expect(tooTall.status).toBe(422);
+      const tooLight = await fetch(`${url}/api/trainer/students/owned-stu/measurements`, {
+        method: 'POST',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ heightCm: 180, weightKg: 1 }),
+      });
+      expect(tooLight.status).toBe(422);
+      // No partial write from a rejected body.
+      expect(
+        [...docs.keys()].some((p) => p.startsWith('users/owned-stu/bodyMeasurements/')),
+      ).toBe(false);
+    } finally {
+      close();
+    }
   });
 });
 

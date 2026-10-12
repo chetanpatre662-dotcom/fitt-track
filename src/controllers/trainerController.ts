@@ -4,6 +4,7 @@ import { assertTrainerOwnsStudent } from '../middleware/role.js';
 import { trainerService } from '../services/trainerService.js';
 import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
 import { assignedWorkoutService } from '../services/assignedWorkoutService.js';
+import { measurementService } from '../services/measurementService.js';
 import type { RangeKey } from '../services/progressService.js';
 import { ok } from '../utils/http.js';
 import type {
@@ -13,6 +14,7 @@ import type {
   AssignWorkoutInput,
   BatchStudentUidsInput,
 } from '../validators/trainerValidators.js';
+import type { MeasurementCreateInput } from '../validators/measurementValidators.js';
 
 function todayKey(): string {
   const d = new Date();
@@ -116,6 +118,22 @@ export async function studentMeasurements(req: Request, res: Response): Promise<
   await assertTrainerOwnsStudent(trainerId, studentUid);
   const result = await trainerService.studentMeasurements(studentUid);
   ok(res, result);
+}
+
+/**
+ * POST /api/trainer/students/:studentUid/measurements — append a dated
+ * body-measurement record for the student. Ownership (404) is asserted before
+ * any write; the body is validated by measurementCreateSchema and the write
+ * goes through the SAME measurementService.add the student path uses, so
+ * trainer- and student-written records are byte-identical. Admin-SDK-mediated
+ * (no Firestore-rule change). History-preserving: never overwrites.
+ */
+export async function addStudentMeasurement(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const created = await measurementService.add(studentUid, req.body as MeasurementCreateInput);
+  ok(res, { measurement: created });
 }
 
 /** GET /api/trainer/students/:studentUid/exercise — per-exercise progression. */
