@@ -55,9 +55,18 @@ router.patch('/referral-code', (0, validate_js_1.validate)({ body: trainerValida
 const studentParams = { params: trainerValidators_js_1.studentUidParamsSchema };
 // Connect-request inbox (trainer-only): list pending, approve/reject.
 router.get('/requests', (0, http_js_1.asyncHandler)(c.listRequests));
+// Batch approve/reject. REGISTERED BEFORE the /requests/:studentUid param
+// routes on purpose: Express matches in registration order, so the literal
+// `batch/` segment must come first or the :studentUid param route would capture
+// it. See design §6 route-collision constraint.
+router.post('/requests/batch/approve', (0, validate_js_1.validate)({ body: trainerValidators_js_1.batchStudentUidsSchema }), (0, http_js_1.asyncHandler)(c.batchApproveRequests));
+router.post('/requests/batch/reject', (0, validate_js_1.validate)({ body: trainerValidators_js_1.batchStudentUidsSchema }), (0, http_js_1.asyncHandler)(c.batchRejectRequests));
 router.post('/requests/:studentUid/approve', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.approveRequest));
 router.post('/requests/:studentUid/reject', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.rejectRequest));
 router.get('/students/:studentUid/overview', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentOverview));
+// Remove a student from the trainer (§5): non-destructive status flip, never a
+// data/account deletion.
+router.delete('/students/:studentUid', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.removeStudent));
 router.get('/students/:studentUid/workouts', (0, validate_js_1.validate)({ ...studentParams, query: trainerValidators_js_1.dateQuerySchema }), (0, http_js_1.asyncHandler)(c.studentWorkouts));
 router.get('/students/:studentUid/workouts/history', (0, validate_js_1.validate)({ ...studentParams, query: trainerValidators_js_1.historyQuerySchema }), (0, http_js_1.asyncHandler)(c.studentWorkoutHistory));
 router.get('/students/:studentUid/nutrition', (0, validate_js_1.validate)({ ...studentParams, query: trainerValidators_js_1.dateQuerySchema }), (0, http_js_1.asyncHandler)(c.studentNutrition));
@@ -72,5 +81,10 @@ router.get('/students/:studentUid/diet-plan', (0, validate_js_1.validate)(studen
 router.post('/students/:studentUid/diet-plan', (0, validate_js_1.validate)({ ...studentParams, body: trainerValidators_js_1.dietPlanUpsertSchema }), (0, http_js_1.asyncHandler)(c.assignDietPlan));
 // Schedule a workout for a student from a template of exercises.
 router.post('/students/:studentUid/workouts/assign', (0, validate_js_1.validate)({ ...studentParams, body: trainerValidators_js_1.assignWorkoutSchema }), (0, http_js_1.asyncHandler)(c.assignWorkout));
+// Single-workout detail. REGISTERED LAST on purpose: Express matches routes in
+// registration order, so the :workoutId param route MUST come after the literal
+// /workouts/history and /workouts/assign segments above or it would capture
+// them. See design §3 route-ordering constraint.
+router.get('/students/:studentUid/workouts/:workoutId', (0, validate_js_1.validate)({ params: trainerValidators_js_1.workoutDetailParamsSchema }), (0, http_js_1.asyncHandler)(c.studentWorkoutDetail));
 exports.default = router;
 //# sourceMappingURL=trainer.routes.js.map

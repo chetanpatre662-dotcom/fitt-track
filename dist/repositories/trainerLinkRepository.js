@@ -20,17 +20,38 @@ class TrainerLinkRepository {
             return null;
         return { studentUid: snap.id, ...snap.data() };
     }
-    /** All active links owned by a trainer, newest first. */
-    async listByTrainer(trainerId) {
-        const snap = await this.col
-            .where('trainerId', '==', trainerId)
-            .where('status', '==', 'active')
-            .get();
-        const rows = snap.docs.map((d) => ({
+    /**
+     * All active links owned by a trainer, newest first (by updatedAt DESC).
+     *
+     * Served by the existing trainerLinks (trainerId ASC, status ASC, updatedAt
+     * DESC) composite index — NO index change required. An optional `limit`
+     * bounds the roster to the newest N active students (a load-more affordance
+     * can page with `cursorUpdatedAt`, the ISO updatedAt of the last returned
+     * row). When `limit` is omitted the full active roster is returned, so the
+     * dashboard's existing live-count behavior is unchanged.
+     *
+     * The rows are sorted/sliced in memory as a defensive fallback so correctness
+     * holds under test doubles whose orderBy/limit/startAfter are passthroughs;
+     * against real Firestore the query already returns the ordered page.
+     */
+    async listByTrainer(trainerId, opts = {}) {
+        const base = this.col.where('trainerId', '==', trainerId).where('status', '==', 'active');
+        const cursorMs = parseIsoMs(opts.cursorUpdatedAt);
+        let q = base.orderBy('updatedAt', 'desc');
+        if (cursorMs !== null)
+            q = q.startAfter(new Date(cursorMs));
+        if (opts.limit && opts.limit > 0)
+            q = q.limit(opts.limit);
+        const snap = await q.get();
+        let rows = snap.docs.map((d) => ({
             studentUid: d.id,
             ...d.data(),
         }));
         rows.sort((a, b) => tsMillis(b.updatedAt) - tsMillis(a.updatedAt));
+        if (cursorMs !== null)
+            rows = rows.filter((r) => tsMillis(r.updatedAt) < cursorMs);
+        if (opts.limit && opts.limit > 0)
+            rows = rows.slice(0, opts.limit);
         return rows;
     }
     /** All PENDING requests addressed to a trainer, newest first. */
@@ -56,6 +77,13 @@ class TrainerLinkRepository {
     }
 }
 exports.TrainerLinkRepository = TrainerLinkRepository;
+/** Parses an ISO cursor string to epoch ms, or null when absent/unparseable. */
+function parseIsoMs(iso) {
+    if (!iso)
+        return null;
+    const ms = Date.parse(iso);
+    return Number.isNaN(ms) ? null : ms;
+}
 function tsMillis(value) {
     const t = value;
     if (t && typeof t.toMillis === 'function')

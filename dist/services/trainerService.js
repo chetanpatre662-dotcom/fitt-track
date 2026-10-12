@@ -254,6 +254,82 @@ class TrainerService {
         return { ok: true, status: 'rejected', studentUid, trainerId };
     }
     /**
+     * Removes a student from the trainer (§5): verifies the ACTIVE
+     * trainer-student relationship (404 anti-enumeration) then runs ONE
+     * transaction that flips trainerLinks/{studentUid}.status to the existing
+     * terminal 'inactive' value and clears the profile mirror
+     * (users/{studentUid}/profile/data.trainerId = null, trainerStatus cleared).
+     *
+     * Deliberately NON-destructive:
+     * - writes NO stored counter (the dashboard derives the count live via
+     *   countActiveStudents, mirroring switchStudentTrainer, so the count
+     *   self-corrects and cannot drift negative);
+     * - touches NO other users/{studentUid}/** data and NEVER deletes the
+     *   student's Firebase account — the student keeps full use of their account.
+     *
+     * Revocation is immediate and automatic: assertTrainerOwnsStudent requires
+     * status === 'active', so once the link is 'inactive' every per-student read
+     * 404s. The guarded flip is idempotent (a double-remove 404s on the second
+     * call because the link is no longer active).
+     */
+    async removeStudent(trainerId, studentUid) {
+        await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
+        const db = (0, firebase_js_1.getFirestore)();
+        const linkRef = trainerLinkRepository_js_1.trainerLinkRepository.doc(studentUid);
+        const profileRef = db.collection('users').doc(studentUid).collection('profile').doc('data');
+        await db.runTransaction(async (tx) => {
+            await tx.get(linkRef);
+            const now = firebase_js_1.admin.firestore.FieldValue.serverTimestamp();
+            tx.set(linkRef, { status: 'inactive', updatedAt: now }, { merge: true });
+            tx.set(profileRef, { trainerId: null, trainerStatus: null, updatedAt: now }, { merge: true });
+        });
+        return { ok: true, studentUid, status: 'inactive' };
+    }
+    /**
+     * Batch-approves pending requests (§6). Dedupes the uids FIRST (so the
+     * caller-applied .max(50) bound and all summary counts are over the unique
+     * set), then for EACH unique id runs the existing single-item approveRequest
+     * path — which calls assertTrainerOwnsPendingRequest (404 per item) and the
+     * idempotent approve transaction. A non-owned / non-pending id is reported as
+     * { ok:false, reason:'not_found' } without failing the whole batch.
+     */
+    async batchApproveRequests(trainerId, studentUids) {
+        return this.runBatch(trainerId, studentUids, 'approved', (uid) => this.approveRequest(trainerId, uid));
+    }
+    /** Batch-rejects pending requests (§6); same contract as batchApproveRequests. */
+    async batchRejectRequests(trainerId, studentUids) {
+        return this.runBatch(trainerId, studentUids, 'rejected', (uid) => this.rejectRequest(trainerId, uid));
+    }
+    /**
+     * Shared batch driver: dedupe ids, process each unique id SEQUENTIALLY via
+     * the single-item path, translate a per-item 404 into a soft failure, and
+     * build the { results, summary } envelope. A non-404 error (an unexpected
+     * server fault) still propagates so the batch does not silently swallow it.
+     */
+    async runBatch(_trainerId, studentUids, successKey, act) {
+        const uniqueUids = [...new Set(studentUids)];
+        const results = [];
+        let succeeded = 0;
+        let failed = 0;
+        for (const studentUid of uniqueUids) {
+            try {
+                const res = await act(studentUid);
+                results.push({ studentUid, ok: true, status: res.status });
+                succeeded += 1;
+            }
+            catch (err) {
+                if (err.statusCode === 404) {
+                    results.push({ studentUid, ok: false, reason: 'not_found' });
+                    failed += 1;
+                }
+                else {
+                    throw err;
+                }
+            }
+        }
+        return { results, summary: { [successKey]: succeeded, failed } };
+    }
+    /**
      * Pending requests for a trainer's "Requests" tab, enriched with the
      * student's name + photoUrl (slimmer than listStudents — identity only).
      */
@@ -499,11 +575,52 @@ class TrainerService {
         const all = await workoutRepository_js_1.workoutRepository.list(studentUid, { status: 'completed' });
         return { shared: true, workouts: all.filter((w) => toDateKey(w.startedAt) === dateKey) };
     }
-    async studentWorkoutHistory(studentUid, limit = 100) {
+    /**
+     * One newest-first page of the student's completed-workout history, gated by
+     * the `workoutHistory` category. Uses the cursor-paginated
+     * `progressService.historyPage` (startedAt-DESC, existing composite index) so
+     * large histories are bounded; the response carries `nextCursor` for a
+     * load-more affordance (null when there are no more pages). `shared:false`
+     * returns an empty page with a null cursor.
+     */
+    async studentWorkoutHistory(studentUid, opts = {}) {
+        const profile = await profileRepository_js_1.profileRepository.get(studentUid);
+        if (!this.isShared(profile, 'workoutHistory')) {
+            return { shared: false, history: [], nextCursor: null };
+        }
+        const { items, nextCursor } = await progressService_js_1.progressService.historyPage(studentUid, {
+            limit: opts.limit,
+            cursorStartedAt: opts.cursor,
+        });
+        return { shared: true, history: items, nextCursor };
+    }
+    /**
+     * The full embedded detail of a single stored workout, gated by the SAME
+     * `workoutHistory` category used by the today/history reads (so a hidden
+     * history can never leak one workout here). Ownership is asserted by the
+     * caller first. Returns {shared:false, workout:null} when sharing is off, and
+     * {shared:true, workout:null} when the doc does not exist (anti-enumeration
+     * parity with the ownership 404 the controller raises).
+     *
+     * The projection returns every recorded set exactly as stored (including the
+     * cardio fields distanceM/durationSeconds/calories) and the stored session
+     * aggregates AS-IS — they are never recomputed from sets[]. A stored
+     * aggregate is omitted only when it is absent or non-numeric on the doc.
+     */
+    async studentWorkoutDetail(studentUid, workoutId) {
+        // Belt-and-suspenders: the literal /workouts/history and /workouts/assign
+        // routes are registered before this param route, but never treat those
+        // reserved segments as a workout id even if they ever reach here.
+        if (workoutId === 'history' || workoutId === 'assign') {
+            return { shared: true, workout: null };
+        }
         const profile = await profileRepository_js_1.profileRepository.get(studentUid);
         if (!this.isShared(profile, 'workoutHistory'))
-            return { shared: false, history: [] };
-        return { shared: true, history: await progressService_js_1.progressService.history(studentUid, 'all', limit) };
+            return { shared: false, workout: null };
+        const doc = await workoutRepository_js_1.workoutRepository.get(studentUid, workoutId);
+        if (!doc)
+            return { shared: true, workout: null };
+        return { shared: true, workout: projectWorkoutDetail(doc) };
     }
     async studentNutrition(studentUid, dateKey) {
         const profile = await profileRepository_js_1.profileRepository.get(studentUid);
@@ -571,6 +688,61 @@ class TrainerService {
     }
 }
 exports.TrainerService = TrainerService;
+/**
+ * Projects a stored workout doc (users/{uid}/workouts/{id}) into the
+ * trainer-facing detail contract (design section (d)). Session aggregates are
+ * copied straight from the doc — never recomputed — and are omitted when
+ * absent/non-numeric. Every set is returned exactly as stored, including the
+ * cardio fields. An exercise with no sets is returned with an empty sets[].
+ */
+function projectWorkoutDetail(doc) {
+    const rawExercises = Array.isArray(doc.exercises) ? doc.exercises : [];
+    const exercises = rawExercises.map((ex) => projectExerciseDetail(ex));
+    const workout = {
+        id: doc.id ?? '',
+        name: doc.name ?? 'Workout',
+        type: doc.type ?? null,
+        status: doc.status ?? 'unknown',
+        muscleGroups: Array.isArray(doc.muscleGroups) ? doc.muscleGroups : [],
+        startedAt: toIso(doc.startedAt),
+        endedAt: toIso(doc.endedAt),
+        exercises,
+    };
+    // Stored session aggregates, returned AS-IS and only when numeric.
+    for (const key of ['durationSeconds', 'totalVolume', 'completedSets', 'totalReps']) {
+        const value = doc[key];
+        if (typeof value === 'number' && Number.isFinite(value))
+            workout[key] = value;
+    }
+    return workout;
+}
+/** Projects one stored exercise, passing every set through unchanged. */
+function projectExerciseDetail(ex) {
+    const rawSets = Array.isArray(ex.sets) ? ex.sets : [];
+    return {
+        exerciseId: ex.exerciseId ?? '',
+        name: ex.name ?? null,
+        order: typeof ex.order === 'number' ? ex.order : 0,
+        notes: ex.notes ?? null,
+        sets: rawSets.map((set) => projectSetDetail(set)),
+    };
+}
+/**
+ * Projects one stored set exactly as recorded. Numeric fields are passed
+ * through when present (and finite), else null; nothing is synthesized.
+ */
+function projectSetDetail(set) {
+    const num = (v) => typeof v === 'number' && Number.isFinite(v) ? v : null;
+    return {
+        setNumber: typeof set.setNumber === 'number' ? set.setNumber : 0,
+        weightKg: num(set.weightKg),
+        reps: num(set.reps),
+        distanceM: num(set.distanceM),
+        durationSeconds: num(set.durationSeconds),
+        calories: num(set.calories),
+        completed: set.completed === true,
+    };
+}
 function todayKey() {
     return toDateKeyFromDate(new Date());
 }

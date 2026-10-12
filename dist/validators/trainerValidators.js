@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assignWorkoutSchema = exports.assignWorkoutExerciseSchema = exports.dietPlanUpsertSchema = exports.sharingPatchUnifiedSchema = exports.SHARING_CATEGORIES = exports.sharingPatchSchema = exports.historyQuerySchema = exports.dateQuerySchema = exports.studentUidParamsSchema = exports.registerTrainerSchema = exports.availabilityQuerySchema = exports.referralCodeSchema = exports.linkTrainerSchema = void 0;
+exports.assignWorkoutSchema = exports.assignWorkoutExerciseSchema = exports.dietPlanUpsertSchema = exports.sharingPatchUnifiedSchema = exports.SHARING_CATEGORIES = exports.sharingPatchSchema = exports.historyQuerySchema = exports.dateQuerySchema = exports.batchStudentUidsSchema = exports.workoutDetailParamsSchema = exports.studentUidParamsSchema = exports.registerTrainerSchema = exports.availabilityQuerySchema = exports.referralCodeSchema = exports.linkTrainerSchema = void 0;
 const zod_1 = require("zod");
 const validate_js_1 = require("../middleware/validate.js");
 /**
@@ -68,13 +68,45 @@ exports.registerTrainerSchema = zod_1.z.object({
 exports.studentUidParamsSchema = zod_1.z.object({
     studentUid: zod_1.z.string().min(1).max(128),
 });
+/**
+ * Path params for the single-workout detail read
+ * (GET /trainer/students/:studentUid/workouts/:workoutId). Extends the
+ * student-uid params with a bounded workoutId so the route is validated the
+ * same way as the other per-student routes.
+ */
+exports.workoutDetailParamsSchema = exports.studentUidParamsSchema.extend({
+    workoutId: zod_1.z.string().min(1).max(128),
+});
+/**
+ * Body schema for the batch request actions (FEAT-003:
+ * POST /trainer/requests/batch/approve|reject). A non-empty array of student
+ * uids; the service de-duplicates and revalidates each entry server-side before
+ * acting. The array is de-duplicated BEFORE the `.max(50)` bound is checked, so
+ * the bound (and every summary count downstream) is applied to the unique set
+ * and a caller cannot bypass it by repeating the same uid.
+ */
+exports.batchStudentUidsSchema = zod_1.z.object({
+    studentUids: zod_1.z
+        .array(zod_1.z.string().min(1))
+        .nonempty()
+        .transform((uids) => [...new Set(uids)])
+        .refine((uids) => uids.length <= 50, {
+        message: 'At most 50 unique student ids are allowed.',
+    }),
+});
 /** Optional ?date=yyyy-MM-dd query for day-scoped reads. */
 exports.dateQuerySchema = zod_1.z.object({
     date: validate_js_1.commonSchemas.dateKey.optional(),
 });
-/** Optional ?limit= for history reads (1..365). */
+/**
+ * Query for paginated history reads: an optional ?limit= page size (1..100) and
+ * an optional ?cursor= — the ISO `startedAt` of the last item from the previous
+ * page, used to fetch the next newest-first page via the startedAt-DESC cursor
+ * query. Both are optional (first page with the default size when omitted).
+ */
 exports.historyQuerySchema = zod_1.z.object({
-    limit: zod_1.z.coerce.number().int().min(1).max(365).optional(),
+    limit: zod_1.z.coerce.number().int().min(1).max(100).optional(),
+    cursor: zod_1.z.string().min(1).max(64).optional(),
 });
 /** Body for the student's progress-sharing toggle. */
 exports.sharingPatchSchema = zod_1.z.object({

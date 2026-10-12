@@ -5,6 +5,7 @@ exports.listStudents = listStudents;
 exports.studentOverview = studentOverview;
 exports.studentWorkouts = studentWorkouts;
 exports.studentWorkoutHistory = studentWorkoutHistory;
+exports.studentWorkoutDetail = studentWorkoutDetail;
 exports.studentNutrition = studentNutrition;
 exports.studentWater = studentWater;
 exports.studentProgress = studentProgress;
@@ -15,9 +16,12 @@ exports.studentRecords = studentRecords;
 exports.assignDietPlan = assignDietPlan;
 exports.studentDietPlan = studentDietPlan;
 exports.assignWorkout = assignWorkout;
+exports.removeStudent = removeStudent;
 exports.listRequests = listRequests;
 exports.approveRequest = approveRequest;
 exports.rejectRequest = rejectRequest;
+exports.batchApproveRequests = batchApproveRequests;
+exports.batchRejectRequests = batchRejectRequests;
 exports.getReferralCode = getReferralCode;
 exports.generateReferralCode = generateReferralCode;
 exports.setReferralCode = setReferralCode;
@@ -64,8 +68,22 @@ async function studentWorkoutHistory(req, res) {
     const trainerId = (0, auth_js_1.requireUid)(req);
     const { studentUid } = req.params;
     await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
-    const { limit } = req.query;
-    const result = await trainerService_js_1.trainerService.studentWorkoutHistory(studentUid, limit);
+    const { limit, cursor } = req.query;
+    const result = await trainerService_js_1.trainerService.studentWorkoutHistory(studentUid, { limit, cursor });
+    (0, http_js_1.ok)(res, result);
+}
+/**
+ * GET /api/trainer/students/:studentUid/workouts/:workoutId — the full embedded
+ * detail of one stored workout (every recorded set incl. cardio fields), gated
+ * by the student's workoutHistory sharing category. Ownership (404) is asserted
+ * first; the service returns {shared:false, workout:null} when sharing is off
+ * and {shared:true, workout:null} when the doc does not exist.
+ */
+async function studentWorkoutDetail(req, res) {
+    const trainerId = (0, auth_js_1.requireUid)(req);
+    const { studentUid, workoutId } = req.params;
+    await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
+    const result = await trainerService_js_1.trainerService.studentWorkoutDetail(studentUid, workoutId);
     (0, http_js_1.ok)(res, result);
 }
 async function studentNutrition(req, res) {
@@ -161,6 +179,19 @@ async function assignWorkout(req, res) {
     const assignedWorkout = await assignedWorkoutService_js_1.assignedWorkoutService.assignForStudent(trainerId, studentUid, body);
     (0, http_js_1.ok)(res, { assignedWorkout });
 }
+/**
+ * DELETE /api/trainer/students/:studentUid — remove a student from the trainer
+ * (§5). Ownership (404) is asserted first; the service flips the link to the
+ * existing 'inactive' status and clears the profile mirror WITHOUT deleting the
+ * student's account or any of their personal data.
+ */
+async function removeStudent(req, res) {
+    const trainerId = (0, auth_js_1.requireUid)(req);
+    const { studentUid } = req.params;
+    await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
+    const result = await trainerService_js_1.trainerService.removeStudent(trainerId, studentUid);
+    (0, http_js_1.ok)(res, result);
+}
 /** GET /api/trainer/requests — pending connect requests (name + photo). */
 async function listRequests(req, res) {
     const trainerId = (0, auth_js_1.requireUid)(req);
@@ -180,6 +211,24 @@ async function rejectRequest(req, res) {
     const { studentUid } = req.params;
     const result = await trainerService_js_1.trainerService.rejectRequest(trainerId, studentUid);
     (0, http_js_1.ok)(res, { ok: true, studentUid, status: result.status });
+}
+/**
+ * POST /api/trainer/requests/batch/approve — approve several pending requests
+ * (§6). Each unique id is revalidated server-side; per-item failures are
+ * reported without failing the batch.
+ */
+async function batchApproveRequests(req, res) {
+    const trainerId = (0, auth_js_1.requireUid)(req);
+    const { studentUids } = req.body;
+    const result = await trainerService_js_1.trainerService.batchApproveRequests(trainerId, studentUids);
+    (0, http_js_1.ok)(res, result);
+}
+/** POST /api/trainer/requests/batch/reject — reject several pending requests (§6). */
+async function batchRejectRequests(req, res) {
+    const trainerId = (0, auth_js_1.requireUid)(req);
+    const { studentUids } = req.body;
+    const result = await trainerService_js_1.trainerService.batchRejectRequests(trainerId, studentUids);
+    (0, http_js_1.ok)(res, result);
 }
 /** GET /api/trainer/referral-code — the trainer's current code. */
 async function getReferralCode(req, res) {
