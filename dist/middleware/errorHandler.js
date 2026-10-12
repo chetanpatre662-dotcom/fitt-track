@@ -18,7 +18,7 @@ function notFoundHandler(req, res) {
  * into a consistent JSON envelope. Never leaks stack traces in production.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function errorHandler(err, _req, res, _next) {
+function errorHandler(err, req, res, _next) {
     if (err instanceof zod_1.ZodError) {
         res.status(422).json({
             success: false,
@@ -40,7 +40,12 @@ function errorHandler(err, _req, res, _next) {
         });
         return;
     }
-    logger_js_1.logger.error({ err }, 'Unhandled error');
+    logger_js_1.logger.error({
+        err,
+        method: req.method,
+        path: req.originalUrl,
+        code: err.code,
+    }, 'Unhandled error');
     res.status(500).json({
         success: false,
         error: {

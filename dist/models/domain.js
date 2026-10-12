@@ -12,8 +12,10 @@ exports.MUSCLE_GROUPS = [
     'shoulders',
     'biceps',
     'triceps',
+    'forearms',
     'legs',
     'glutes',
+    'calves',
     'core',
     'full_body',
     'cardio',
@@ -46,6 +48,7 @@ exports.EQUIPMENT = [
     'jump_rope',
     'squat_rack',
     'ez_bar',
+    'smith_machine',
 ];
 exports.GOALS = [
     'muscle_gain',

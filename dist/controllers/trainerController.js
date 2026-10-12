@@ -11,6 +11,7 @@ exports.studentWater = studentWater;
 exports.studentProgress = studentProgress;
 exports.studentPhotos = studentPhotos;
 exports.studentMeasurements = studentMeasurements;
+exports.addStudentMeasurement = addStudentMeasurement;
 exports.studentExerciseProgression = studentExerciseProgression;
 exports.studentRecords = studentRecords;
 exports.assignDietPlan = assignDietPlan;
@@ -31,6 +32,7 @@ const role_js_1 = require("../middleware/role.js");
 const trainerService_js_1 = require("../services/trainerService.js");
 const dietPlanAssignmentService_js_1 = require("../services/dietPlanAssignmentService.js");
 const assignedWorkoutService_js_1 = require("../services/assignedWorkoutService.js");
+const measurementService_js_1 = require("../services/measurementService.js");
 const http_js_1 = require("../utils/http.js");
 function todayKey() {
     const d = new Date();
@@ -123,6 +125,21 @@ async function studentMeasurements(req, res) {
     await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
     const result = await trainerService_js_1.trainerService.studentMeasurements(studentUid);
     (0, http_js_1.ok)(res, result);
+}
+/**
+ * POST /api/trainer/students/:studentUid/measurements — append a dated
+ * body-measurement record for the student. Ownership (404) is asserted before
+ * any write; the body is validated by measurementCreateSchema and the write
+ * goes through the SAME measurementService.add the student path uses, so
+ * trainer- and student-written records are byte-identical. Admin-SDK-mediated
+ * (no Firestore-rule change). History-preserving: never overwrites.
+ */
+async function addStudentMeasurement(req, res) {
+    const trainerId = (0, auth_js_1.requireUid)(req);
+    const { studentUid } = req.params;
+    await (0, role_js_1.assertTrainerOwnsStudent)(trainerId, studentUid);
+    const created = await measurementService_js_1.measurementService.add(studentUid, req.body);
+    (0, http_js_1.ok)(res, { measurement: created });
 }
 /** GET /api/trainer/students/:studentUid/exercise — per-exercise progression. */
 async function studentExerciseProgression(req, res) {

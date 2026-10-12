@@ -39,6 +39,7 @@ const role_js_1 = require("../middleware/role.js");
 const validate_js_1 = require("../middleware/validate.js");
 const http_js_1 = require("../utils/http.js");
 const trainerValidators_js_1 = require("../validators/trainerValidators.js");
+const measurementValidators_js_1 = require("../validators/measurementValidators.js");
 const progressValidators_js_1 = require("../validators/progressValidators.js");
 const c = __importStar(require("../controllers/trainerController.js"));
 const router = (0, express_1.Router)();
@@ -74,6 +75,9 @@ router.get('/students/:studentUid/water', (0, validate_js_1.validate)({ ...stude
 router.get('/students/:studentUid/progress', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentProgress));
 router.get('/students/:studentUid/photos', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentPhotos));
 router.get('/students/:studentUid/measurements', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentMeasurements));
+// Append a dated body-measurement record for the student (reuses the SAME
+// validator + service as the student path; Admin-SDK-mediated, no rule change).
+router.post('/students/:studentUid/measurements', (0, validate_js_1.validate)({ ...studentParams, body: measurementValidators_js_1.measurementCreateSchema }), (0, http_js_1.asyncHandler)(c.addStudentMeasurement));
 router.get('/students/:studentUid/exercise', (0, validate_js_1.validate)({ ...studentParams, query: progressValidators_js_1.exerciseProgressionQuerySchema }), (0, http_js_1.asyncHandler)(c.studentExerciseProgression));
 router.get('/students/:studentUid/records', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentRecords));
 router.get('/students/:studentUid/diet-plan', (0, validate_js_1.validate)(studentParams), (0, http_js_1.asyncHandler)(c.studentDietPlan));
