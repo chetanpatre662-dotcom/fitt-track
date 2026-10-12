@@ -713,7 +713,10 @@ describe('/api/trainer per-student data endpoints (measurements/exercise/records
         expect(body.data.progression.range).toBe('all');
         expect(body.data.progression.points).toHaveLength(1);
         expect(body.data.progression.points[0].maxWeightKg).toBe(100);
-        expect(body.data.progression.points[0].maxReps).toBe(5);
+        // §3 fix: maxReps is the reps performed on the MAX-WEIGHT set (100kg×3),
+        // not the max reps of any set (the 90kg×5 warm-up). The 100kg/3 pair
+        // actually co-occurred; 100kg/5 never happened.
+        expect(body.data.progression.points[0].maxReps).toBe(3);
       } finally {
         close();
       }

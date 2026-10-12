@@ -1,5 +1,6 @@
 import { getFirestore } from '../config/firebase.js';
 import type { WorkoutExerciseData } from '../utils/workoutCalc.js';
+import { bestSetForWorkout } from '../utils/prCalc.js';
 
 export type RangeKey = '7d' | '30d' | '90d' | '1y' | 'all';
 
@@ -118,21 +119,23 @@ export class ProgressService {
       maxWeightKg: number;
       maxReps: number;
       totalVolume: number;
+      estimated1RmKg: number | null;
     }[] = [];
 
     for (const w of workouts) {
       const ex = w.exercises.find((e) => e.exerciseId === exerciseId);
       if (!ex || !w.startedAt) continue;
-      const done = ex.sets.filter((s) => s.completed);
-      if (done.length === 0) continue;
-      const maxWeightKg = Math.max(...done.map((s) => s.weightKg ?? 0));
-      const maxReps = Math.max(...done.map((s) => s.reps ?? 0));
-      const volume = done.reduce((sum, s) => {
-        const w2 = s.weightKg ?? 0;
-        const r = s.reps ?? 0;
-        return sum + (w2 > 0 && r > 0 ? w2 * r : 0);
-      }, 0);
-      points.push({ date: dateKey(w.startedAt), maxWeightKg, maxReps, totalVolume: volume });
+      const best = bestSetForWorkout(ex.sets);
+      if (!best) continue;
+      // `maxReps` now means the reps performed on the max-weight set (NOT the
+      // max reps of any set); the wire key is kept for backward compatibility.
+      points.push({
+        date: dateKey(w.startedAt),
+        maxWeightKg: best.weightKg,
+        maxReps: best.reps,
+        totalVolume: best.volume,
+        estimated1RmKg: best.estimated1Rm,
+      });
     }
 
     return { exerciseId, range, points };

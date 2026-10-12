@@ -11,6 +11,64 @@ export interface PrCandidate {
 }
 
 /**
+ * The single best (heaviest) set of a workout, carrying its OWN reps so the
+ * weight/reps pair always co-occurred on one real set. Used for the
+ * previous-performance / progression hint (§3 fix).
+ */
+export interface BestSet {
+  weightKg: number;
+  reps: number;
+  volume: number;
+  /** Epley estimate (weightKg*(1+reps/30)) at 1 decimal; null when reps>30. */
+  estimated1Rm: number | null;
+}
+
+/**
+ * Returns the heaviest VALID (completed, positive weight+reps) set of a
+ * workout, carrying the ACTUAL reps performed on that set — never an inferred,
+ * defaulted, or max-of-any-set reps value. This is the §3 root-cause fix for
+ * progression: it replaces the previous two independent Math.max over weight
+ * and reps, which could pair a top-set weight with a warm-up's reps.
+ *
+ * Rules IN ORDER:
+ *   1. Keep a set only if completed && weightKg>0 && reps>0; none -> null.
+ *   2. weightKg = greatest weightKg among valid sets.
+ *   3. reps = the actual reps of that max-weight set.
+ *   4. Tie-break at equal max weight = the set with the highest actual reps.
+ *   5. estimated1Rm = Epley at 1 decimal, only when reps<=30 (else null).
+ *   6. volume = sum of weightKg*reps over all valid sets.
+ */
+export function bestSetForWorkout(sets: WorkoutSetData[]): BestSet | null {
+  const valid = sets.filter(
+    (s) =>
+      s.completed === true &&
+      s.weightKg != null &&
+      s.weightKg > 0 &&
+      s.reps != null &&
+      s.reps > 0,
+  );
+  if (valid.length === 0) return null;
+
+  let best = valid[0];
+  for (const s of valid) {
+    const w = s.weightKg as number;
+    const r = s.reps as number;
+    const bw = best.weightKg as number;
+    const br = best.reps as number;
+    if (w > bw || (w === bw && r > br)) {
+      best = s;
+    }
+  }
+
+  const weightKg = best.weightKg as number;
+  const reps = best.reps as number;
+  const volume = valid.reduce((sum, s) => sum + (s.weightKg as number) * (s.reps as number), 0);
+  const estimated1Rm = reps <= 30 ? Math.round(weightKg * (1 + reps / 30) * 10) / 10 : null;
+
+  return { weightKg, reps, volume, estimated1Rm };
+}
+
+/**
  * Derives the best PR candidates for each exercise from its COMPLETED sets.
  * Strength exercises produce max_weight / max_reps / max_volume candidates.
  * Cardio (distance/duration) sets produce best_distance / best_time.
