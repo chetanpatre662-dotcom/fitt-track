@@ -654,6 +654,39 @@ export class TrainerService {
     return { shared: true, history: await progressService.history(studentUid, 'all', limit) };
   }
 
+  /**
+   * The full embedded detail of a single stored workout, gated by the SAME
+   * `workoutHistory` category used by the today/history reads (so a hidden
+   * history can never leak one workout here). Ownership is asserted by the
+   * caller first. Returns {shared:false, workout:null} when sharing is off, and
+   * {shared:true, workout:null} when the doc does not exist (anti-enumeration
+   * parity with the ownership 404 the controller raises).
+   *
+   * The projection returns every recorded set exactly as stored (including the
+   * cardio fields distanceM/durationSeconds/calories) and the stored session
+   * aggregates AS-IS — they are never recomputed from sets[]. A stored
+   * aggregate is omitted only when it is absent or non-numeric on the doc.
+   */
+  async studentWorkoutDetail(
+    studentUid: string,
+    workoutId: string,
+  ): Promise<{ shared: boolean; workout: Record<string, unknown> | null }> {
+    // Belt-and-suspenders: the literal /workouts/history and /workouts/assign
+    // routes are registered before this param route, but never treat those
+    // reserved segments as a workout id even if they ever reach here.
+    if (workoutId === 'history' || workoutId === 'assign') {
+      return { shared: true, workout: null };
+    }
+
+    const profile = await profileRepository.get(studentUid);
+    if (!this.isShared(profile, 'workoutHistory')) return { shared: false, workout: null };
+
+    const doc = await workoutRepository.get(studentUid, workoutId);
+    if (!doc) return { shared: true, workout: null };
+
+    return { shared: true, workout: projectWorkoutDetail(doc) };
+  }
+
   async studentNutrition(studentUid: string, dateKey: string) {
     const profile = await profileRepository.get(studentUid);
     if (!this.isShared(profile, 'nutrition')) {
@@ -728,6 +761,67 @@ export class TrainerService {
     await assertTrainerOwnsStudent(trainerId, studentUid);
     return loader();
   }
+}
+
+/**
+ * Projects a stored workout doc (users/{uid}/workouts/{id}) into the
+ * trainer-facing detail contract (design section (d)). Session aggregates are
+ * copied straight from the doc — never recomputed — and are omitted when
+ * absent/non-numeric. Every set is returned exactly as stored, including the
+ * cardio fields. An exercise with no sets is returned with an empty sets[].
+ */
+function projectWorkoutDetail(doc: Record<string, unknown>): Record<string, unknown> {
+  const rawExercises = Array.isArray(doc.exercises) ? (doc.exercises as unknown[]) : [];
+  const exercises = rawExercises.map((ex) => projectExerciseDetail(ex as Record<string, unknown>));
+
+  const workout: Record<string, unknown> = {
+    id: (doc.id as string) ?? '',
+    name: (doc.name as string) ?? 'Workout',
+    type: (doc.type as string | undefined) ?? null,
+    status: (doc.status as string | undefined) ?? 'unknown',
+    muscleGroups: Array.isArray(doc.muscleGroups) ? (doc.muscleGroups as unknown[]) : [],
+    startedAt: toIso(doc.startedAt),
+    endedAt: toIso(doc.endedAt),
+    exercises,
+  };
+
+  // Stored session aggregates, returned AS-IS and only when numeric.
+  for (const key of ['durationSeconds', 'totalVolume', 'completedSets', 'totalReps'] as const) {
+    const value = doc[key];
+    if (typeof value === 'number' && Number.isFinite(value)) workout[key] = value;
+  }
+
+  return workout;
+}
+
+/** Projects one stored exercise, passing every set through unchanged. */
+function projectExerciseDetail(ex: Record<string, unknown>): Record<string, unknown> {
+  const rawSets = Array.isArray(ex.sets) ? (ex.sets as unknown[]) : [];
+  return {
+    exerciseId: (ex.exerciseId as string) ?? '',
+    name: (ex.name as string | undefined) ?? null,
+    order: typeof ex.order === 'number' ? ex.order : 0,
+    notes: (ex.notes as string | undefined) ?? null,
+    sets: rawSets.map((set) => projectSetDetail(set as Record<string, unknown>)),
+  };
+}
+
+/**
+ * Projects one stored set exactly as recorded. Numeric fields are passed
+ * through when present (and finite), else null; nothing is synthesized.
+ */
+function projectSetDetail(set: Record<string, unknown>): Record<string, unknown> {
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  return {
+    setNumber: typeof set.setNumber === 'number' ? set.setNumber : 0,
+    weightKg: num(set.weightKg),
+    reps: num(set.reps),
+    distanceM: num(set.distanceM),
+    durationSeconds: num(set.durationSeconds),
+    calories: num(set.calories),
+    completed: set.completed === true,
+  };
 }
 
 function todayKey(): string {

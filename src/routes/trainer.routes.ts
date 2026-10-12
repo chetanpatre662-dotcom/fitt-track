@@ -11,6 +11,7 @@ import {
   availabilityQuerySchema,
   dietPlanUpsertSchema,
   assignWorkoutSchema,
+  workoutDetailParamsSchema,
 } from '../validators/trainerValidators.js';
 import { exerciseProgressionQuerySchema } from '../validators/progressValidators.js';
 import * as c from '../controllers/trainerController.js';
@@ -109,6 +110,16 @@ router.post(
   '/students/:studentUid/workouts/assign',
   validate({ ...studentParams, body: assignWorkoutSchema }),
   asyncHandler(c.assignWorkout),
+);
+
+// Single-workout detail. REGISTERED LAST on purpose: Express matches routes in
+// registration order, so the :workoutId param route MUST come after the literal
+// /workouts/history and /workouts/assign segments above or it would capture
+// them. See design §3 route-ordering constraint.
+router.get(
+  '/students/:studentUid/workouts/:workoutId',
+  validate({ params: workoutDetailParamsSchema }),
+  asyncHandler(c.studentWorkoutDetail),
 );
 
 export default router;

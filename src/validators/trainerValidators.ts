@@ -73,6 +73,26 @@ export const studentUidParamsSchema = z.object({
   studentUid: z.string().min(1).max(128),
 });
 
+/**
+ * Path params for the single-workout detail read
+ * (GET /trainer/students/:studentUid/workouts/:workoutId). Extends the
+ * student-uid params with a bounded workoutId so the route is validated the
+ * same way as the other per-student routes.
+ */
+export const workoutDetailParamsSchema = studentUidParamsSchema.extend({
+  workoutId: z.string().min(1).max(128),
+});
+
+/**
+ * Body schema for the batch request actions (FEAT-003:
+ * POST /trainer/requests/batch/approve|reject). A non-empty array of student
+ * uids; the service de-duplicates and revalidates each entry server-side before
+ * acting.
+ */
+export const batchStudentUidsSchema = z.object({
+  studentUids: z.array(z.string().min(1)).nonempty(),
+});
+
 /** Optional ?date=yyyy-MM-dd query for day-scoped reads. */
 export const dateQuerySchema = z.object({
   date: commonSchemas.dateKey.optional(),

@@ -59,6 +59,21 @@ export async function studentWorkoutHistory(req: Request, res: Response): Promis
   ok(res, result);
 }
 
+/**
+ * GET /api/trainer/students/:studentUid/workouts/:workoutId — the full embedded
+ * detail of one stored workout (every recorded set incl. cardio fields), gated
+ * by the student's workoutHistory sharing category. Ownership (404) is asserted
+ * first; the service returns {shared:false, workout:null} when sharing is off
+ * and {shared:true, workout:null} when the doc does not exist.
+ */
+export async function studentWorkoutDetail(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid, workoutId } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const result = await trainerService.studentWorkoutDetail(studentUid, workoutId);
+  ok(res, result);
+}
+
 export async function studentNutrition(req: Request, res: Response): Promise<void> {
   const trainerId = requireUid(req);
   const { studentUid } = req.params;
