@@ -593,6 +593,45 @@ export const EXERCISES: Exercise[] = [
     recommendedRestSeconds: 60,
     keywords: ['chest', 'cable', 'crossover', 'high to low', 'fly', 'flye', 'lower chest'],
   }),
+  ex({
+    id: 'low-to-high-cable-fly',
+    name: 'Low to High Cable Fly',
+    primaryMuscle: 'chest',
+    secondaryMuscles: ['shoulders'],
+    category: 'chest',
+    location: 'gym',
+    equipment: ['cable'],
+    difficulty: 'beginner',
+    type: 'hypertrophy',
+    instructions: [
+      'Set both pulleys to the lowest position and grip a handle in each hand.',
+      'Stand tall with a slight forward lean and a soft bend in the elbows.',
+      'Bring the handles up and together in front of the upper chest in a wide arc.',
+      'Return under control to a stretch and repeat.',
+    ],
+    safetyNotes: ['Keep a soft, fixed elbow angle throughout.', 'Avoid shrugging the shoulders at the top.'],
+    recommendedSets: 3,
+    recommendedRepMin: 12,
+    recommendedRepMax: 15,
+    recommendedRestSeconds: 60,
+    keywords: ['chest', 'cable', 'fly', 'flye', 'low to high', 'cable fly', 'chest fly', 'upper chest', 'incline fly'],
+    startingPosition:
+      'Stand centred between two low pulleys with a handle in each hand, feet staggered, and a slight forward lean through the torso.',
+    breathing: 'Exhale as you sweep the handles up and together; inhale as you return to the stretch.',
+    formCues: [
+      'Lead with the hands tracing an upward arc toward the upper chest.',
+      'Keep the elbow angle fixed so the chest does the work, not the biceps.',
+      'Squeeze the pecs hard at the top before lowering under control.',
+    ],
+    commonMistakes: [
+      'Turning the fly into a press by bending and extending the elbows.',
+      'Using too much weight and losing the upward arc path.',
+    ],
+    variations: [
+      'Easier: single-arm low-to-high cable fly to groove the pattern.',
+      'Harder: add a one-second squeeze at the top of each rep.',
+    ],
+  }),
 
   // ---------------------------------------------------------------- BACK
   ex({
@@ -2806,7 +2845,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMin: 12,
     recommendedRepMax: 20,
     recommendedRestSeconds: 45,
-    keywords: ['core', 'abs', 'twister', 'oblique', 'rotation', 'machine', 'seated', 'sitting'],
+    keywords: ['core', 'abs', 'twister', 'oblique', 'rotation', 'machine', 'seated', 'sitting', 'seated twister', 'seated twister machine'],
   }),
   ex({
     id: 'cable-twister-low-to-high',
@@ -2829,7 +2868,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMin: 10,
     recommendedRepMax: 15,
     recommendedRestSeconds: 60,
-    keywords: ['core', 'abs', 'twister', 'oblique', 'rotation', 'cable', 'low to high', 'woodchop'],
+    keywords: ['core', 'abs', 'twister', 'oblique', 'rotation', 'cable', 'cable twister', 'low to high', 'woodchop'],
   }),
   ex({
     id: 'cable-twister-high-to-low',
@@ -2852,7 +2891,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMin: 10,
     recommendedRepMax: 15,
     recommendedRestSeconds: 60,
-    keywords: ['core', 'abs', 'twister', 'oblique', 'rotation', 'cable', 'high to low', 'woodchop'],
+    keywords: ['core', 'abs', 'twister', 'oblique', 'rotation', 'cable', 'cable twister', 'high to low', 'woodchop'],
   }),
   ex({
     id: 'dumbbell-twister-low-to-high',
@@ -3317,6 +3356,45 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 1,
     recommendedRestSeconds: 45,
     keywords: ['cardio', 'battle ropes', 'ropes', 'hiit', 'conditioning', 'shoulders'],
+  }),
+  ex({
+    id: 'sled-push',
+    name: 'Sled Push',
+    primaryMuscle: 'legs',
+    secondaryMuscles: ['glutes', 'core'],
+    category: 'cardio',
+    location: 'gym',
+    equipment: ['machine'],
+    difficulty: 'intermediate',
+    type: 'cardio',
+    instructions: [
+      'Load the sled and grip the handles with arms extended.',
+      'Set a low body angle with a braced core and flat back.',
+      'Drive through the legs with powerful, alternating strides to push the sled forward.',
+      'Keep driving for the set distance or time, then reset.',
+    ],
+    safetyNotes: ['Keep the back flat and core braced; let the legs do the work.', 'Clear the path before pushing.'],
+    recommendedSets: 4,
+    recommendedRepMin: 1,
+    recommendedRepMax: 1,
+    recommendedRestSeconds: 90,
+    keywords: ['legs', 'cardio', 'sled', 'prowler', 'sled push', 'push', 'conditioning'],
+    startingPosition:
+      'Stand behind the loaded sled gripping the handles with arms extended, hips low, torso leaning forward, and the core braced.',
+    breathing: 'Breathe rhythmically with each drive; avoid holding your breath over longer pushes.',
+    formCues: [
+      'Keep a straight line from head to hips and drive through the balls of the feet.',
+      'Take powerful, full strides rather than short choppy steps.',
+      'Keep the arms firm and let the legs generate the force.',
+    ],
+    commonMistakes: [
+      'Rounding the back or standing too upright, bleeding off leg drive.',
+      'Loading the sled so heavy that stride mechanics break down.',
+    ],
+    variations: [
+      'Easier: lighten the load or shorten the push distance.',
+      'Harder: add load or push for longer distances/time intervals.',
+    ],
   }),
 
   // ---------------------------------------------------------------- MOBILITY / STRETCHING

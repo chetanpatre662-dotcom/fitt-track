@@ -226,6 +226,76 @@ describe('exercise catalogue — search', () => {
   });
 });
 
+describe('exercise catalogue — catalogue + search expansion (§6/§7)', () => {
+  it('adds exactly the two new ids with unique, well-formed entries', () => {
+    const ids = EXERCISES.map((e) => e.id);
+    for (const id of ['low-to-high-cable-fly', 'sled-push']) {
+      expect(ids).toContain(id);
+      // ids remain unique even with the additions
+      expect(ids.filter((x) => x === id).length).toBe(1);
+    }
+  });
+
+  it('low-to-high-cable-fly is a valid chest entry', () => {
+    const e = EXERCISES.find((x) => x.id === 'low-to-high-cable-fly')!;
+    expect(e.name).toBe('Low to High Cable Fly');
+    expect(e.primaryMuscle).toBe('chest');
+    expect(e.category).toBe('chest');
+    expect(e.equipment).toEqual(['cable']);
+  });
+
+  it('sled-push is pinned to legs/cardio with valid enum values only', () => {
+    const e = EXERCISES.find((x) => x.id === 'sled-push')!;
+    expect(e.name).toBe('Sled Push');
+    expect(e.primaryMuscle).toBe('legs');
+    expect(e.category).toBe('cardio');
+    expect(e.type).toBe('cardio');
+    expect(e.equipment).toEqual(['machine']);
+    // never the invalid tokens the user might expect
+    expect(e.equipment).not.toContain('sled');
+    expect(e.equipment).not.toContain('functional');
+    expect(e.equipment).not.toContain('other');
+  });
+
+  it('locks the expanded group counts (chest 29, legs 25, cardio 13, total 182)', () => {
+    const byPrimary = (g: MuscleGroup) => EXERCISES.filter((e) => e.primaryMuscle === g).length;
+    expect(EXERCISES.length).toBe(182);
+    expect(byPrimary('chest')).toBe(29);
+    expect(byPrimary('legs')).toBe(25);
+    expect(byPrimary('cardio')).toBe(13);
+  });
+
+  it('new search aliases resolve to the expected exercise(s)', () => {
+    expect(find('low to high cable fly')).toContain('low-to-high-cable-fly');
+    expect(find('sled')).toContain('sled-push');
+    expect(find('prowler')).toContain('sled-push');
+  });
+
+  it('"seated twister" resolves to the sitting twister machine', () => {
+    expect(find('seated twister')).toContain('sitting-twister-machine');
+    expect(find('seated twister machine')).toContain('sitting-twister-machine');
+  });
+
+  it('"cable twister" resolves to both cable twister entries', () => {
+    const res = find('cable twister');
+    expect(res).toContain('cable-twister-low-to-high');
+    expect(res).toContain('cable-twister-high-to-low');
+  });
+
+  it('preserves existing ids after the expansion', () => {
+    const ids = EXERCISES.map((e) => e.id);
+    for (const id of [
+      'cable-twister-low-to-high',
+      'cable-twister-high-to-low',
+      'sitting-twister-machine',
+      'high-to-low-cable-crossover',
+      'battle-ropes',
+    ]) {
+      expect(ids).toContain(id);
+    }
+  });
+});
+
 describe('exercise catalogue — pagination (no silent cap)', () => {
   it('returns the full set when no limit is given', async () => {
     const res = await exerciseService.list({});
