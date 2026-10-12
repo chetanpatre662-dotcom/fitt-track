@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getTrainer = getTrainer;
+exports.leaveTrainer = leaveTrainer;
 exports.connectTrainer = connectTrainer;
 exports.setSharing = setSharing;
 exports.getDietPlan = getDietPlan;
@@ -17,6 +18,17 @@ const trainerValidators_js_1 = require("../validators/trainerValidators.js");
 async function getTrainer(req, res) {
     const uid = (0, auth_js_1.requireUid)(req);
     const result = await studentService_js_1.studentService.getTrainer(uid);
+    (0, http_js_1.ok)(res, result);
+}
+/**
+ * DELETE /api/student/trainer — the student-initiated "Leave Trainer" / "Cancel
+ * request" action. Keyed by the authenticated uid only (no body, no validator);
+ * returns HTTP 200 { ok:true, previousStatus, status:'inactive' } for every
+ * branch so the client derives its confirmation copy from previousStatus.
+ */
+async function leaveTrainer(req, res) {
+    const uid = (0, auth_js_1.requireUid)(req);
+    const result = await studentService_js_1.studentService.leaveTrainer(uid);
     (0, http_js_1.ok)(res, result);
 }
 /**

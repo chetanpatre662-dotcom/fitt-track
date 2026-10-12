@@ -44,6 +44,9 @@ const router = (0, express_1.Router)();
 // read their own trainer card and toggle their own sharing preference.
 router.use(auth_js_1.authenticate);
 router.get('/trainer', (0, http_js_1.asyncHandler)(c.getTrainer));
+// Student-initiated leave/withdraw: keyed by the authenticated uid, so there is
+// no request body and no validate() middleware.
+router.delete('/trainer', (0, http_js_1.asyncHandler)(c.leaveTrainer));
 router.post('/connect-trainer', (0, validate_js_1.validate)({ body: trainerValidators_js_1.linkTrainerSchema }), (0, http_js_1.asyncHandler)(c.connectTrainer));
 router.patch('/trainer/sharing', (0, validate_js_1.validate)({ body: trainerValidators_js_1.sharingPatchUnifiedSchema }), (0, http_js_1.asyncHandler)(c.setSharing));
 router.get('/diet-plan', (0, http_js_1.asyncHandler)(c.getDietPlan));
