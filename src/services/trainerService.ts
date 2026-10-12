@@ -53,6 +53,23 @@ export interface RequestResult {
   requestedTrainer?: TrainerRef;
 }
 
+/** One item in a batch approve/reject result (§6). */
+export interface BatchItemResult {
+  studentUid: string;
+  ok: boolean;
+  /** Present on ok:true — the link status after the action. */
+  status?: 'pending' | 'active' | 'rejected';
+  /** Present on ok:false — why the item was skipped (per-item 404-equivalent). */
+  reason?: 'not_found';
+}
+
+/** The envelope returned by batch approve/reject (§6). */
+export interface BatchResult {
+  results: BatchItemResult[];
+  /** `approved` for the approve endpoint, `rejected` for the reject endpoint. */
+  summary: { approved?: number; rejected?: number; failed: number };
+}
+
 /** The trainer's current referral code. */
 export interface ReferralCodeInfo {
   code: string | null;
@@ -361,6 +378,107 @@ export class TrainerService {
     });
 
     return { ok: true, status: 'rejected', studentUid, trainerId };
+  }
+
+  /**
+   * Removes a student from the trainer (§5): verifies the ACTIVE
+   * trainer-student relationship (404 anti-enumeration) then runs ONE
+   * transaction that flips trainerLinks/{studentUid}.status to the existing
+   * terminal 'inactive' value and clears the profile mirror
+   * (users/{studentUid}/profile/data.trainerId = null, trainerStatus cleared).
+   *
+   * Deliberately NON-destructive:
+   * - writes NO stored counter (the dashboard derives the count live via
+   *   countActiveStudents, mirroring switchStudentTrainer, so the count
+   *   self-corrects and cannot drift negative);
+   * - touches NO other users/{studentUid}/** data and NEVER deletes the
+   *   student's Firebase account — the student keeps full use of their account.
+   *
+   * Revocation is immediate and automatic: assertTrainerOwnsStudent requires
+   * status === 'active', so once the link is 'inactive' every per-student read
+   * 404s. The guarded flip is idempotent (a double-remove 404s on the second
+   * call because the link is no longer active).
+   */
+  async removeStudent(
+    trainerId: string,
+    studentUid: string,
+  ): Promise<{ ok: true; studentUid: string; status: 'inactive' }> {
+    await assertTrainerOwnsStudent(trainerId, studentUid);
+
+    const db = getFirestore();
+    const linkRef = trainerLinkRepository.doc(studentUid);
+    const profileRef = db.collection('users').doc(studentUid).collection('profile').doc('data');
+
+    await db.runTransaction(async (tx) => {
+      await tx.get(linkRef);
+      const now = admin.firestore.FieldValue.serverTimestamp();
+      tx.set(linkRef, { status: 'inactive', updatedAt: now }, { merge: true });
+      tx.set(profileRef, { trainerId: null, trainerStatus: null, updatedAt: now }, { merge: true });
+    });
+
+    return { ok: true, studentUid, status: 'inactive' };
+  }
+
+  /**
+   * Batch-approves pending requests (§6). Dedupes the uids FIRST (so the
+   * caller-applied .max(50) bound and all summary counts are over the unique
+   * set), then for EACH unique id runs the existing single-item approveRequest
+   * path — which calls assertTrainerOwnsPendingRequest (404 per item) and the
+   * idempotent approve transaction. A non-owned / non-pending id is reported as
+   * { ok:false, reason:'not_found' } without failing the whole batch.
+   */
+  async batchApproveRequests(
+    trainerId: string,
+    studentUids: string[],
+  ): Promise<BatchResult> {
+    return this.runBatch(trainerId, studentUids, 'approved', (uid) =>
+      this.approveRequest(trainerId, uid),
+    );
+  }
+
+  /** Batch-rejects pending requests (§6); same contract as batchApproveRequests. */
+  async batchRejectRequests(
+    trainerId: string,
+    studentUids: string[],
+  ): Promise<BatchResult> {
+    return this.runBatch(trainerId, studentUids, 'rejected', (uid) =>
+      this.rejectRequest(trainerId, uid),
+    );
+  }
+
+  /**
+   * Shared batch driver: dedupe ids, process each unique id SEQUENTIALLY via
+   * the single-item path, translate a per-item 404 into a soft failure, and
+   * build the { results, summary } envelope. A non-404 error (an unexpected
+   * server fault) still propagates so the batch does not silently swallow it.
+   */
+  private async runBatch(
+    _trainerId: string,
+    studentUids: string[],
+    successKey: 'approved' | 'rejected',
+    act: (studentUid: string) => Promise<RequestResult>,
+  ): Promise<BatchResult> {
+    const uniqueUids = [...new Set(studentUids)];
+    const results: BatchItemResult[] = [];
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const studentUid of uniqueUids) {
+      try {
+        const res = await act(studentUid);
+        results.push({ studentUid, ok: true, status: res.status });
+        succeeded += 1;
+      } catch (err) {
+        if ((err as { statusCode?: number }).statusCode === 404) {
+          results.push({ studentUid, ok: false, reason: 'not_found' });
+          failed += 1;
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    return { results, summary: { [successKey]: succeeded, failed } as BatchResult['summary'] };
   }
 
   /**

@@ -87,11 +87,21 @@ export const workoutDetailParamsSchema = studentUidParamsSchema.extend({
  * Body schema for the batch request actions (FEAT-003:
  * POST /trainer/requests/batch/approve|reject). A non-empty array of student
  * uids; the service de-duplicates and revalidates each entry server-side before
- * acting.
+ * acting. The array is de-duplicated BEFORE the `.max(50)` bound is checked, so
+ * the bound (and every summary count downstream) is applied to the unique set
+ * and a caller cannot bypass it by repeating the same uid.
  */
 export const batchStudentUidsSchema = z.object({
-  studentUids: z.array(z.string().min(1)).nonempty(),
+  studentUids: z
+    .array(z.string().min(1))
+    .nonempty()
+    .transform((uids) => [...new Set(uids)])
+    .refine((uids) => uids.length <= 50, {
+      message: 'At most 50 unique student ids are allowed.',
+    }),
 });
+
+export type BatchStudentUidsInput = z.infer<typeof batchStudentUidsSchema>;
 
 /** Optional ?date=yyyy-MM-dd query for day-scoped reads. */
 export const dateQuerySchema = z.object({

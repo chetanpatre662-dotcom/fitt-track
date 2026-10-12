@@ -12,6 +12,7 @@ import {
   dietPlanUpsertSchema,
   assignWorkoutSchema,
   workoutDetailParamsSchema,
+  batchStudentUidsSchema,
 } from '../validators/trainerValidators.js';
 import { exerciseProgressionQuerySchema } from '../validators/progressValidators.js';
 import * as c from '../controllers/trainerController.js';
@@ -43,6 +44,20 @@ const studentParams = { params: studentUidParamsSchema };
 
 // Connect-request inbox (trainer-only): list pending, approve/reject.
 router.get('/requests', asyncHandler(c.listRequests));
+// Batch approve/reject. REGISTERED BEFORE the /requests/:studentUid param
+// routes on purpose: Express matches in registration order, so the literal
+// `batch/` segment must come first or the :studentUid param route would capture
+// it. See design §6 route-collision constraint.
+router.post(
+  '/requests/batch/approve',
+  validate({ body: batchStudentUidsSchema }),
+  asyncHandler(c.batchApproveRequests),
+);
+router.post(
+  '/requests/batch/reject',
+  validate({ body: batchStudentUidsSchema }),
+  asyncHandler(c.batchRejectRequests),
+);
 router.post(
   '/requests/:studentUid/approve',
   validate(studentParams),
@@ -55,6 +70,10 @@ router.post(
 );
 
 router.get('/students/:studentUid/overview', validate(studentParams), asyncHandler(c.studentOverview));
+
+// Remove a student from the trainer (§5): non-destructive status flip, never a
+// data/account deletion.
+router.delete('/students/:studentUid', validate(studentParams), asyncHandler(c.removeStudent));
 router.get(
   '/students/:studentUid/workouts',
   validate({ ...studentParams, query: dateQuerySchema }),

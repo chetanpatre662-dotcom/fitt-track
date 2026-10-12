@@ -11,6 +11,7 @@ import type {
   AvailabilityQueryInput,
   DietPlanUpsertInput,
   AssignWorkoutInput,
+  BatchStudentUidsInput,
 } from '../validators/trainerValidators.js';
 
 function todayKey(): string {
@@ -177,6 +178,20 @@ export async function assignWorkout(req: Request, res: Response): Promise<void> 
   ok(res, { assignedWorkout });
 }
 
+/**
+ * DELETE /api/trainer/students/:studentUid — remove a student from the trainer
+ * (§5). Ownership (404) is asserted first; the service flips the link to the
+ * existing 'inactive' status and clears the profile mirror WITHOUT deleting the
+ * student's account or any of their personal data.
+ */
+export async function removeStudent(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUid } = req.params;
+  await assertTrainerOwnsStudent(trainerId, studentUid);
+  const result = await trainerService.removeStudent(trainerId, studentUid);
+  ok(res, result);
+}
+
 /** GET /api/trainer/requests — pending connect requests (name + photo). */
 export async function listRequests(req: Request, res: Response): Promise<void> {
   const trainerId = requireUid(req);
@@ -198,6 +213,26 @@ export async function rejectRequest(req: Request, res: Response): Promise<void> 
   const { studentUid } = req.params;
   const result = await trainerService.rejectRequest(trainerId, studentUid);
   ok(res, { ok: true, studentUid, status: result.status });
+}
+
+/**
+ * POST /api/trainer/requests/batch/approve — approve several pending requests
+ * (§6). Each unique id is revalidated server-side; per-item failures are
+ * reported without failing the batch.
+ */
+export async function batchApproveRequests(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUids } = req.body as BatchStudentUidsInput;
+  const result = await trainerService.batchApproveRequests(trainerId, studentUids);
+  ok(res, result);
+}
+
+/** POST /api/trainer/requests/batch/reject — reject several pending requests (§6). */
+export async function batchRejectRequests(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const { studentUids } = req.body as BatchStudentUidsInput;
+  const result = await trainerService.batchRejectRequests(trainerId, studentUids);
+  ok(res, result);
 }
 
 /** GET /api/trainer/referral-code — the trainer's current code. */
