@@ -10,8 +10,10 @@ export const MUSCLE_GROUPS = [
   'shoulders',
   'biceps',
   'triceps',
+  'forearms',
   'legs',
   'glutes',
+  'calves',
   'core',
   'full_body',
   'cardio',
@@ -52,6 +54,7 @@ export const EQUIPMENT = [
   'jump_rope',
   'squat_rack',
   'ez_bar',
+  'smith_machine',
 ] as const;
 export type Equipment = (typeof EQUIPMENT)[number];
 
@@ -134,4 +137,10 @@ export interface Exercise {
   imageUrl?: string;
   videoUrl?: string;
   keywords: string[];
+  /** Optional guide/demonstration content (populated per-exercise where curated). */
+  startingPosition?: string;
+  breathing?: string;
+  formCues?: string[];
+  commonMistakes?: string[];
+  variations?: string[];
 }

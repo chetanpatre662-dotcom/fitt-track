@@ -40,6 +40,23 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 10,
     recommendedRestSeconds: 150,
     keywords: ['chest', 'press', 'bench', 'bench press', 'flat', 'flat bench press', 'push', 'barbell', 'pecs'],
+    startingPosition:
+      'Lie flat on a horizontal bench with feet planted, shoulder blades retracted and pinned down, and the bar directly over your eyes.',
+    breathing: 'Inhale and brace as you lower the bar; exhale forcefully as you press back to lockout.',
+    formCues: [
+      'Drive your feet into the floor and keep a slight natural arch in the lower back.',
+      'Tuck the elbows to roughly 45 degrees from the torso at the bottom.',
+      'Touch the same point on the mid-chest every rep for a consistent bar path.',
+    ],
+    commonMistakes: [
+      'Bouncing the bar off the chest instead of controlling the descent.',
+      'Flaring the elbows straight out to 90 degrees, stressing the shoulders.',
+      'Lifting the hips off the bench to cheat the weight up.',
+    ],
+    variations: [
+      'Easier: dumbbell bench press or push-ups.',
+      'Harder: pause bench press with a one-second hold on the chest.',
+    ],
   }),
   ex({
     id: 'incline-barbell-press',
@@ -62,6 +79,22 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 12,
     recommendedRestSeconds: 120,
     keywords: ['chest', 'incline', 'incline press', 'press', 'upper chest', 'barbell'],
+    startingPosition:
+      'Set an adjustable bench to 30-45 degrees, sit back with shoulder blades retracted, and position the bar over the upper chest.',
+    breathing: 'Inhale and brace at the top; exhale as you drive the bar up and slightly back over the shoulders.',
+    formCues: [
+      'Keep the incline moderate (around 30 degrees) to bias the upper chest over the front delts.',
+      'Lower the bar to the collarbone/upper-chest line, not the mid-chest.',
+      'Keep the glutes on the bench throughout the set.',
+    ],
+    commonMistakes: [
+      'Setting the bench too steep so the shoulders take over.',
+      'Letting the bar drift down toward the belly instead of the upper chest.',
+    ],
+    variations: [
+      'Easier: incline dumbbell press for a more natural wrist path.',
+      'Harder: increase the incline angle slightly or add a pause at the chest.',
+    ],
   }),
   ex({
     id: 'incline-machine-press',
@@ -89,6 +122,22 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 12,
     recommendedRestSeconds: 90,
     keywords: ['chest', 'incline', 'incline press', 'press', 'upper chest', 'machine'],
+    startingPosition:
+      'Adjust the seat so the handles sit level with your upper chest, sit back firmly against the pad, and grip both handles.',
+    breathing: 'Exhale as you press the handles forward; inhale as you return under control.',
+    formCues: [
+      'Let the fixed machine path guide the movement and focus on squeezing the chest.',
+      'Keep a small bend in the elbows at full extension.',
+      'Match the seat height to your upper chest so the angle targets the right fibers.',
+    ],
+    commonMistakes: [
+      'Setting the seat too low so the movement turns into a shoulder press.',
+      'Jerking the stack and letting momentum do the work.',
+    ],
+    variations: [
+      'Easier: lighten the stack and raise reps to groove the pattern.',
+      'Harder: incline barbell or dumbbell press for more stabiliser demand.',
+    ],
   }),
   ex({
     id: 'decline-barbell-press',
