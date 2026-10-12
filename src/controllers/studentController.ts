@@ -21,6 +21,18 @@ export async function getTrainer(req: Request, res: Response): Promise<void> {
 }
 
 /**
+ * DELETE /api/student/trainer — the student-initiated "Leave Trainer" / "Cancel
+ * request" action. Keyed by the authenticated uid only (no body, no validator);
+ * returns HTTP 200 { ok:true, previousStatus, status:'inactive' } for every
+ * branch so the client derives its confirmation copy from previousStatus.
+ */
+export async function leaveTrainer(req: Request, res: Response): Promise<void> {
+  const uid = requireUid(req);
+  const result = await studentService.leaveTrainer(uid);
+  ok(res, result);
+}
+
+/**
  * POST /api/student/connect-trainer — connect-after-registration from Profile.
  * A thin alias delegating to the same requestTrainer service as
  * /auth/link-trainer (identical body/semantics) so behavior cannot drift. A

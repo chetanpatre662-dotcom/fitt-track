@@ -12,6 +12,9 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/trainer', asyncHandler(c.getTrainer));
+// Student-initiated leave/withdraw: keyed by the authenticated uid, so there is
+// no request body and no validate() middleware.
+router.delete('/trainer', asyncHandler(c.leaveTrainer));
 router.post(
   '/connect-trainer',
   validate({ body: linkTrainerSchema }),

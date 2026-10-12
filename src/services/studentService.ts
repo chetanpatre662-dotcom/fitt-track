@@ -1,8 +1,17 @@
-import { admin } from '../config/firebase.js';
+import { getFirestore, admin } from '../config/firebase.js';
 import { trainerLinkRepository } from '../repositories/trainerLinkRepository.js';
 import { trainerRepository } from '../repositories/trainerRepository.js';
 import { profileRepository } from '../repositories/profileRepository.js';
 import { SHARING_CATEGORIES, type SharingCategory } from '../validators/trainerValidators.js';
+
+/** The outcome of a student-initiated leave/withdraw. */
+export interface LeaveTrainerResult {
+  ok: true;
+  /** The link status BEFORE this call (so the client can derive copy). */
+  previousStatus: 'active' | 'pending' | 'rejected' | 'inactive' | 'none';
+  /** The terminal status after this call (always the existing 'inactive'). */
+  status: 'inactive';
+}
 
 /** The fully-resolved five-key sharing map returned to the student. */
 export type ResolvedSharing = Record<SharingCategory, boolean>;
@@ -83,6 +92,57 @@ export class StudentService {
     }
 
     return { trainer: card };
+  }
+
+  /**
+   * Student-initiated "Leave Trainer" (§4): the student-side mirror of
+   * trainerService.removeStudent. Keyed by the authenticated student's own uid
+   * (never a body/query value), it runs ONE transaction over
+   * trainerLinks/{studentUid} (doc id == uid) and captures the pre-action
+   * status as `previousStatus` ('none' when there is no link doc).
+   *
+   * Branches:
+   * - active  -> flip status:'inactive' and clear the profile mirror
+   *   (users/{studentUid}/profile/data.{trainerId:null,trainerStatus:null}) —
+   *   the student leaves an approved trainer;
+   * - pending -> same inactive + mirror-clear (withdraw a request the trainer
+   *   had not yet acted on);
+   * - rejected/inactive/none -> idempotent no-op success (nothing to write).
+   *
+   * Deliberately NON-destructive, exactly like removeStudent: it writes ONLY
+   * trainerLinks/{studentUid} (and the profile mirror), touches NOTHING on the
+   * trainer doc, and NEVER deletes any trainer-created workouts/diet/history —
+   * access revokes automatically because every per-student gate requires an
+   * ACTIVE link. A double-leave is safe (the second call sees a non-active
+   * previousStatus and no-ops), and because the doc id is the caller's uid a
+   * student can only ever affect their own link.
+   */
+  async leaveTrainer(studentUid: string): Promise<LeaveTrainerResult> {
+    const db = getFirestore();
+    const linkRef = trainerLinkRepository.doc(studentUid);
+    const profileRef = db.collection('users').doc(studentUid).collection('profile').doc('data');
+
+    const previousStatus = await db.runTransaction<LeaveTrainerResult['previousStatus']>(
+      async (tx) => {
+        const linkSnap = await tx.get(linkRef);
+        const prev = (linkSnap.exists ? (linkSnap.data()?.status as string) : null) ?? 'none';
+        const now = admin.firestore.FieldValue.serverTimestamp();
+
+        // Only an active or pending link needs a write; everything else is a
+        // no-op success so repeated calls stay idempotent.
+        if (prev === 'active' || prev === 'pending') {
+          tx.set(linkRef, { status: 'inactive', updatedAt: now }, { merge: true });
+          tx.set(
+            profileRef,
+            { trainerId: null, trainerStatus: null, updatedAt: now },
+            { merge: true },
+          );
+        }
+        return prev as LeaveTrainerResult['previousStatus'];
+      },
+    );
+
+    return { ok: true, previousStatus, status: 'inactive' };
   }
 
   /**
