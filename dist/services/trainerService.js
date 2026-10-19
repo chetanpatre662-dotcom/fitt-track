@@ -733,6 +733,7 @@ function projectExerciseDetail(ex) {
  */
 function projectSetDetail(set) {
     const num = (v) => typeof v === 'number' && Number.isFinite(v) ? v : null;
+    const rawStages = Array.isArray(set.dropStages) ? set.dropStages : [];
     return {
         setNumber: typeof set.setNumber === 'number' ? set.setNumber : 0,
         weightKg: num(set.weightKg),
@@ -741,6 +742,11 @@ function projectSetDetail(set) {
         durationSeconds: num(set.durationSeconds),
         calories: num(set.calories),
         completed: set.completed === true,
+        setType: set.setType === 'drop' ? 'drop' : 'normal',
+        dropStages: rawStages.map((stage) => {
+            const st = stage;
+            return { weightKg: num(st.weightKg), reps: num(st.reps) };
+        }),
     };
 }
 function todayKey() {

@@ -257,10 +257,11 @@ describe('exercise catalogue — catalogue + search expansion (§6/§7)', () => 
     expect(e.equipment).not.toContain('other');
   });
 
-  it('locks the expanded group counts (chest 29, legs 25, cardio 13, total 182)', () => {
+  it('locks the expanded group counts (chest 31, legs 25, cardio 13, total 188)', () => {
     const byPrimary = (g: MuscleGroup) => EXERCISES.filter((e) => e.primaryMuscle === g).length;
-    expect(EXERCISES.length).toBe(182);
-    expect(byPrimary('chest')).toBe(29);
+    // 182 original + 6 new (2 chest, 3 back, 1 biceps) = 188.
+    expect(EXERCISES.length).toBe(188);
+    expect(byPrimary('chest')).toBe(31);
     expect(byPrimary('legs')).toBe(25);
     expect(byPrimary('cardio')).toBe(13);
   });
@@ -293,6 +294,74 @@ describe('exercise catalogue — catalogue + search expansion (§6/§7)', () => 
     ]) {
       expect(ids).toContain(id);
     }
+  });
+});
+
+describe('exercise catalogue — eight-exercises feature', () => {
+  const NEW_IDS = [
+    'incline-machine-fly',
+    'low-to-high-dumbbell-fly',
+    'spider-hammer-curl',
+    'one-arm-cable-row',
+    'straight-arm-lat-pulldown',
+    'single-hand-dumbbell-row',
+  ];
+  const PRE_EXISTING_IDS = ['low-to-high-cable-fly', 'dumbbell-deadlift'];
+
+  it('adds the six new ids exactly once each', () => {
+    const ids = EXERCISES.map((e) => e.id);
+    for (const id of NEW_IDS) {
+      expect(ids).toContain(id);
+      expect(ids.filter((x) => x === id).length).toBe(1);
+    }
+  });
+
+  it('does NOT duplicate the two pre-existing ids', () => {
+    const ids = EXERCISES.map((e) => e.id);
+    for (const id of PRE_EXISTING_IDS) {
+      expect(ids.filter((x) => x === id).length).toBe(1);
+    }
+  });
+
+  it('keeps all ids unique and all names unique (exact case-sensitive)', () => {
+    const ids = EXERCISES.map((e) => e.id);
+    const names = EXERCISES.map((e) => e.name);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('each new entry is found by its full lowercase name', () => {
+    const byName: Record<string, string> = {
+      'incline-machine-fly': 'incline machine fly',
+      'low-to-high-dumbbell-fly': 'low to high dumbbell fly',
+      'spider-hammer-curl': 'spider hammer curl',
+      'one-arm-cable-row': 'one arm cable row',
+      'straight-arm-lat-pulldown': 'straight arm lat pulldown',
+      'single-hand-dumbbell-row': 'single hand dumbbell row',
+    };
+    for (const [id, q] of Object.entries(byName)) {
+      expect(find(q), `search "${q}" should find ${id}`).toContain(id);
+    }
+  });
+
+  it('each new entry is found by an alias keyword', () => {
+    expect(find('pec deck')).toContain('incline-machine-fly');
+    expect(find('low-to-high')).toContain('low-to-high-dumbbell-fly');
+    expect(find('spider')).toContain('spider-hammer-curl');
+    expect(find('unilateral')).toContain('one-arm-cable-row');
+    expect(find('unilateral')).toContain('single-hand-dumbbell-row');
+    expect(find('pullover')).toContain('straight-arm-lat-pulldown');
+  });
+
+  it('new entries appear under their primary muscle + equipment filters', () => {
+    const byFilter = (f: Parameters<typeof ExerciseService.applyFilters>[1]) =>
+      ExerciseService.applyFilters(EXERCISES, f).map((e) => e.id);
+    expect(byFilter({ muscle: 'chest', equipment: 'machine' })).toContain('incline-machine-fly');
+    expect(byFilter({ muscle: 'chest', equipment: 'dumbbell' })).toContain('low-to-high-dumbbell-fly');
+    expect(byFilter({ muscle: 'biceps', equipment: 'dumbbell' })).toContain('spider-hammer-curl');
+    expect(byFilter({ muscle: 'back', equipment: 'cable' })).toContain('one-arm-cable-row');
+    expect(byFilter({ muscle: 'back', equipment: 'cable' })).toContain('straight-arm-lat-pulldown');
+    expect(byFilter({ muscle: 'back', equipment: 'dumbbell' })).toContain('single-hand-dumbbell-row');
   });
 });
 

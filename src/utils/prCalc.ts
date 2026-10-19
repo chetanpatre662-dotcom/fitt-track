@@ -1,5 +1,6 @@
 import type { PrType } from '../models/domain.js';
 import type { WorkoutExerciseData, WorkoutSetData } from './workoutCalc.js';
+import { setVolume, topStageOf } from './workoutCalc.js';
 
 /** A candidate personal-record value derived from a workout's completed sets. */
 export interface PrCandidate {
@@ -39,30 +40,34 @@ export interface BestSet {
  *   6. volume = sum of weightKg*reps over all valid sets.
  */
 export function bestSetForWorkout(sets: WorkoutSetData[]): BestSet | null {
-  const valid = sets.filter(
-    (s) =>
-      s.completed === true &&
-      s.weightKg != null &&
-      s.weightKg > 0 &&
-      s.reps != null &&
-      s.reps > 0,
-  );
+  // The PR-relevant weight/reps pair of each set is its TOP stage (stage 0 for
+  // a drop set, the top-level values otherwise) — never a lighter drop stage.
+  const valid = sets.filter((s) => {
+    if (s.completed !== true) return false;
+    const top = topStageOf(s);
+    return top.weightKg != null && top.weightKg > 0 && top.reps != null && top.reps > 0;
+  });
   if (valid.length === 0) return null;
 
   let best = valid[0];
+  let bestPair = topStageOf(best);
   for (const s of valid) {
-    const w = s.weightKg as number;
-    const r = s.reps as number;
-    const bw = best.weightKg as number;
-    const br = best.reps as number;
+    const pair = topStageOf(s);
+    const w = pair.weightKg as number;
+    const r = pair.reps as number;
+    const bw = bestPair.weightKg as number;
+    const br = bestPair.reps as number;
     if (w > bw || (w === bw && r > br)) {
       best = s;
+      bestPair = pair;
     }
   }
 
-  const weightKg = best.weightKg as number;
-  const reps = best.reps as number;
-  const volume = valid.reduce((sum, s) => sum + (s.weightKg as number) * (s.reps as number), 0);
+  const weightKg = bestPair.weightKg as number;
+  const reps = bestPair.reps as number;
+  // Volume is the drop-aware total (sum of stages for a drop set) so it matches
+  // the aggregate totalVolume and the progression hint.
+  const volume = valid.reduce((sum, s) => sum + setVolume(s), 0);
   const estimated1Rm = reps <= 30 ? Math.round(weightKg * (1 + reps / 30) * 10) / 10 : null;
 
   return { weightKg, reps, volume, estimated1Rm };
@@ -83,38 +88,43 @@ export function derivePrCandidates(exercises: WorkoutExerciseData[]): PrCandidat
     const done = ex.sets.filter((s) => s.completed);
     if (done.length === 0) continue;
 
-    // Strength candidates.
-    const maxWeightSet = bestBy(done, (s) => s.weightKg ?? 0);
-    if (maxWeightSet && (maxWeightSet.weightKg ?? 0) > 0) {
+    // Strength candidates. The weight/reps pair comes from each set's TOP
+    // stage (drop-aware) so lighter drop stages never create a spurious PR.
+    const maxWeightSet = bestBy(done, (s) => topStageOf(s).weightKg ?? 0);
+    if (maxWeightSet && (topStageOf(maxWeightSet).weightKg ?? 0) > 0) {
+      const top = topStageOf(maxWeightSet);
       out.push({
         exerciseId: ex.exerciseId,
         recordType: 'max_weight',
-        value: maxWeightSet.weightKg as number,
-        reps: maxWeightSet.reps ?? null,
-        weightKg: maxWeightSet.weightKg ?? null,
+        value: top.weightKg as number,
+        reps: top.reps,
+        weightKg: top.weightKg,
       });
     }
 
-    const maxRepsSet = bestBy(done, (s) => s.reps ?? 0);
-    if (maxRepsSet && (maxRepsSet.reps ?? 0) > 0) {
+    const maxRepsSet = bestBy(done, (s) => topStageOf(s).reps ?? 0);
+    if (maxRepsSet && (topStageOf(maxRepsSet).reps ?? 0) > 0) {
+      const top = topStageOf(maxRepsSet);
       out.push({
         exerciseId: ex.exerciseId,
         recordType: 'max_reps',
-        value: maxRepsSet.reps as number,
-        reps: maxRepsSet.reps ?? null,
-        weightKg: maxRepsSet.weightKg ?? null,
+        value: top.reps as number,
+        reps: top.reps,
+        weightKg: top.weightKg,
       });
     }
 
-    const maxVolumeSet = bestBy(done, (s) => setVol(s));
-    const maxVol = maxVolumeSet ? setVol(maxVolumeSet) : 0;
+    // Volume PR rewards the whole set, so a drop set uses its stage-sum volume.
+    const maxVolumeSet = bestBy(done, (s) => setVolume(s));
+    const maxVol = maxVolumeSet ? setVolume(maxVolumeSet) : 0;
     if (maxVol > 0) {
+      const top = maxVolumeSet ? topStageOf(maxVolumeSet) : { weightKg: null, reps: null };
       out.push({
         exerciseId: ex.exerciseId,
         recordType: 'max_volume',
         value: maxVol,
-        reps: maxVolumeSet?.reps ?? null,
-        weightKg: maxVolumeSet?.weightKg ?? null,
+        reps: top.reps,
+        weightKg: top.weightKg,
       });
     }
 
@@ -139,12 +149,6 @@ export function derivePrCandidates(exercises: WorkoutExerciseData[]): PrCandidat
   }
 
   return out;
-}
-
-function setVol(s: WorkoutSetData): number {
-  const w = s.weightKg ?? 0;
-  const r = s.reps ?? 0;
-  return w > 0 && r > 0 ? w * r : 0;
 }
 
 function bestBy(sets: WorkoutSetData[], score: (s: WorkoutSetData) => number): WorkoutSetData | null {

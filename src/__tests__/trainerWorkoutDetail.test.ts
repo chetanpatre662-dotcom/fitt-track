@@ -134,6 +134,8 @@ type DetailBody = {
           durationSeconds: number | null;
           calories: number | null;
           completed: boolean;
+          setType?: string;
+          dropStages?: Array<{ weightKg: number | null; reps: number | null }>;
         }>;
       }>;
     } | null;
@@ -326,6 +328,56 @@ describe('GET /api/trainer/students/:studentUid/workouts/:workoutId', () => {
       expect(w.totalVolume).toBeUndefined();
       expect(w.completedSets).toBeUndefined();
       expect(w.durationSeconds).toBeUndefined();
+    } finally {
+      close();
+    }
+  });
+
+  it('projects a drop set with setType:drop + finite-coerced dropStages; legacy set -> normal/empty', async () => {
+    docs.set('users/owned-stu/workouts/wdrop', {
+      name: 'Drop Day',
+      status: 'completed',
+      startedAt: ts('2024-03-03T09:00:00.000Z'),
+      exercises: [
+        {
+          exerciseId: 'curl',
+          name: 'Dumbbell Curl',
+          order: 0,
+          sets: [
+            {
+              setNumber: 1,
+              completed: true,
+              weightKg: 20,
+              reps: 8,
+              setType: 'drop',
+              // Stage with a non-numeric weight must coerce to null via num().
+              dropStages: [
+                { weightKg: 20, reps: 8 },
+                { weightKg: 'bad', reps: 10 },
+              ],
+            },
+            // A legacy set carries neither key.
+            { setNumber: 2, completed: true, weightKg: 15, reps: 12 },
+          ],
+        },
+      ],
+    });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/workouts/wdrop`, {
+        headers: auth('trainer-token'),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as DetailBody;
+      const sets = body.data.workout!.exercises[0].sets;
+      expect(sets[0].setType).toBe('drop');
+      expect(sets[0].dropStages).toEqual([
+        { weightKg: 20, reps: 8 },
+        { weightKg: null, reps: 10 },
+      ]);
+      // Legacy set -> normal/empty.
+      expect(sets[1].setType).toBe('normal');
+      expect(sets[1].dropStages).toEqual([]);
     } finally {
       close();
     }

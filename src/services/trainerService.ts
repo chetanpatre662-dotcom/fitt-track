@@ -945,6 +945,7 @@ function projectExerciseDetail(ex: Record<string, unknown>): Record<string, unkn
 function projectSetDetail(set: Record<string, unknown>): Record<string, unknown> {
   const num = (v: unknown): number | null =>
     typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const rawStages = Array.isArray(set.dropStages) ? (set.dropStages as unknown[]) : [];
   return {
     setNumber: typeof set.setNumber === 'number' ? set.setNumber : 0,
     weightKg: num(set.weightKg),
@@ -953,6 +954,11 @@ function projectSetDetail(set: Record<string, unknown>): Record<string, unknown>
     durationSeconds: num(set.durationSeconds),
     calories: num(set.calories),
     completed: set.completed === true,
+    setType: set.setType === 'drop' ? 'drop' : 'normal',
+    dropStages: rawStages.map((stage) => {
+      const st = stage as Record<string, unknown>;
+      return { weightKg: num(st.weightKg), reps: num(st.reps) };
+    }),
   };
 }
 

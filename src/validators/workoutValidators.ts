@@ -1,15 +1,42 @@
 import { z } from 'zod';
 import { EXERCISE_TYPES, MUSCLE_GROUPS, WORKOUT_STATUSES } from '../models/domain.js';
 
-const setSchema = z.object({
-  setNumber: z.number().int().min(1),
+const dropStageSchema = z.object({
   weightKg: z.number().min(0).max(1000).nullable().optional(),
   reps: z.number().int().min(0).max(1000).nullable().optional(),
-  distanceM: z.number().min(0).max(1_000_000).nullable().optional(),
-  durationSeconds: z.number().int().min(0).max(86_400).nullable().optional(),
-  calories: z.number().min(0).max(20_000).nullable().optional(),
-  completed: z.boolean().default(false),
 });
+
+const setSchema = z
+  .object({
+    setNumber: z.number().int().min(1),
+    weightKg: z.number().min(0).max(1000).nullable().optional(),
+    reps: z.number().int().min(0).max(1000).nullable().optional(),
+    distanceM: z.number().min(0).max(1_000_000).nullable().optional(),
+    durationSeconds: z.number().int().min(0).max(86_400).nullable().optional(),
+    calories: z.number().min(0).max(20_000).nullable().optional(),
+    completed: z.boolean().default(false),
+    // Additive drop-set fields (both optional so legacy payloads still validate).
+    setType: z.enum(['normal', 'drop']).optional(),
+    dropStages: z.array(dropStageSchema).max(12).optional(),
+  })
+  .superRefine((s, ctx) => {
+    const isDrop = s.setType === 'drop';
+    const hasStages = Array.isArray(s.dropStages) && s.dropStages.length > 0;
+    if (isDrop && !hasStages) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['dropStages'],
+        message: 'A drop set must have at least one drop stage.',
+      });
+    }
+    if (!isDrop && hasStages) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['dropStages'],
+        message: 'dropStages is only allowed when setType is "drop".',
+      });
+    }
+  });
 
 const workoutExerciseSchema = z.object({
   exerciseId: z.string().min(1).max(200),

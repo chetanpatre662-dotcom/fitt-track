@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.bestSetForWorkout = bestSetForWorkout;
 exports.derivePrCandidates = derivePrCandidates;
 exports.isNewRecord = isNewRecord;
+const workoutCalc_js_1 = require("./workoutCalc.js");
 /**
  * Returns the heaviest VALID (completed, positive weight+reps) set of a
  * workout, carrying the ACTUAL reps performed on that set — never an inferred,
@@ -19,26 +20,34 @@ exports.isNewRecord = isNewRecord;
  *   6. volume = sum of weightKg*reps over all valid sets.
  */
 function bestSetForWorkout(sets) {
-    const valid = sets.filter((s) => s.completed === true &&
-        s.weightKg != null &&
-        s.weightKg > 0 &&
-        s.reps != null &&
-        s.reps > 0);
+    // The PR-relevant weight/reps pair of each set is its TOP stage (stage 0 for
+    // a drop set, the top-level values otherwise) — never a lighter drop stage.
+    const valid = sets.filter((s) => {
+        if (s.completed !== true)
+            return false;
+        const top = (0, workoutCalc_js_1.topStageOf)(s);
+        return top.weightKg != null && top.weightKg > 0 && top.reps != null && top.reps > 0;
+    });
     if (valid.length === 0)
         return null;
     let best = valid[0];
+    let bestPair = (0, workoutCalc_js_1.topStageOf)(best);
     for (const s of valid) {
-        const w = s.weightKg;
-        const r = s.reps;
-        const bw = best.weightKg;
-        const br = best.reps;
+        const pair = (0, workoutCalc_js_1.topStageOf)(s);
+        const w = pair.weightKg;
+        const r = pair.reps;
+        const bw = bestPair.weightKg;
+        const br = bestPair.reps;
         if (w > bw || (w === bw && r > br)) {
             best = s;
+            bestPair = pair;
         }
     }
-    const weightKg = best.weightKg;
-    const reps = best.reps;
-    const volume = valid.reduce((sum, s) => sum + s.weightKg * s.reps, 0);
+    const weightKg = bestPair.weightKg;
+    const reps = bestPair.reps;
+    // Volume is the drop-aware total (sum of stages for a drop set) so it matches
+    // the aggregate totalVolume and the progression hint.
+    const volume = valid.reduce((sum, s) => sum + (0, workoutCalc_js_1.setVolume)(s), 0);
     const estimated1Rm = reps <= 30 ? Math.round(weightKg * (1 + reps / 30) * 10) / 10 : null;
     return { weightKg, reps, volume, estimated1Rm };
 }
@@ -56,36 +65,41 @@ function derivePrCandidates(exercises) {
         const done = ex.sets.filter((s) => s.completed);
         if (done.length === 0)
             continue;
-        // Strength candidates.
-        const maxWeightSet = bestBy(done, (s) => s.weightKg ?? 0);
-        if (maxWeightSet && (maxWeightSet.weightKg ?? 0) > 0) {
+        // Strength candidates. The weight/reps pair comes from each set's TOP
+        // stage (drop-aware) so lighter drop stages never create a spurious PR.
+        const maxWeightSet = bestBy(done, (s) => (0, workoutCalc_js_1.topStageOf)(s).weightKg ?? 0);
+        if (maxWeightSet && ((0, workoutCalc_js_1.topStageOf)(maxWeightSet).weightKg ?? 0) > 0) {
+            const top = (0, workoutCalc_js_1.topStageOf)(maxWeightSet);
             out.push({
                 exerciseId: ex.exerciseId,
                 recordType: 'max_weight',
-                value: maxWeightSet.weightKg,
-                reps: maxWeightSet.reps ?? null,
-                weightKg: maxWeightSet.weightKg ?? null,
+                value: top.weightKg,
+                reps: top.reps,
+                weightKg: top.weightKg,
             });
         }
-        const maxRepsSet = bestBy(done, (s) => s.reps ?? 0);
-        if (maxRepsSet && (maxRepsSet.reps ?? 0) > 0) {
+        const maxRepsSet = bestBy(done, (s) => (0, workoutCalc_js_1.topStageOf)(s).reps ?? 0);
+        if (maxRepsSet && ((0, workoutCalc_js_1.topStageOf)(maxRepsSet).reps ?? 0) > 0) {
+            const top = (0, workoutCalc_js_1.topStageOf)(maxRepsSet);
             out.push({
                 exerciseId: ex.exerciseId,
                 recordType: 'max_reps',
-                value: maxRepsSet.reps,
-                reps: maxRepsSet.reps ?? null,
-                weightKg: maxRepsSet.weightKg ?? null,
+                value: top.reps,
+                reps: top.reps,
+                weightKg: top.weightKg,
             });
         }
-        const maxVolumeSet = bestBy(done, (s) => setVol(s));
-        const maxVol = maxVolumeSet ? setVol(maxVolumeSet) : 0;
+        // Volume PR rewards the whole set, so a drop set uses its stage-sum volume.
+        const maxVolumeSet = bestBy(done, (s) => (0, workoutCalc_js_1.setVolume)(s));
+        const maxVol = maxVolumeSet ? (0, workoutCalc_js_1.setVolume)(maxVolumeSet) : 0;
         if (maxVol > 0) {
+            const top = maxVolumeSet ? (0, workoutCalc_js_1.topStageOf)(maxVolumeSet) : { weightKg: null, reps: null };
             out.push({
                 exerciseId: ex.exerciseId,
                 recordType: 'max_volume',
                 value: maxVol,
-                reps: maxVolumeSet?.reps ?? null,
-                weightKg: maxVolumeSet?.weightKg ?? null,
+                reps: top.reps,
+                weightKg: top.weightKg,
             });
         }
         // Cardio candidates.
@@ -107,11 +121,6 @@ function derivePrCandidates(exercises) {
         }
     }
     return out;
-}
-function setVol(s) {
-    const w = s.weightKg ?? 0;
-    const r = s.reps ?? 0;
-    return w > 0 && r > 0 ? w * r : 0;
 }
 function bestBy(sets, score) {
     let best = null;

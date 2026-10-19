@@ -38,6 +38,11 @@ export class WorkoutService {
           durationSeconds: s.durationSeconds ?? null,
           calories: s.calories ?? null,
           completed: s.completed,
+          setType: s.setType ?? 'normal',
+          dropStages: (s.dropStages ?? []).map((st) => ({
+            weightKg: st.weightKg ?? null,
+            reps: st.reps ?? null,
+          })),
         })),
       });
     }
