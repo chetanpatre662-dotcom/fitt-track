@@ -206,3 +206,95 @@ describe('drop-set zod validator (.superRefine invariant)', () => {
     expect(res.success).toBe(true);
   });
 });
+
+describe('unilateral (left/right) rules — SAME fixtures as the frontend', () => {
+  it('derivePrCandidates on a unilateral DROP set uses the heavier side of stage 0', () => {
+    const exercises: WorkoutExerciseData[] = [
+      {
+        exerciseId: 'one-arm-cable-row',
+        order: 0,
+        sets: [
+          {
+            setNumber: 1,
+            completed: false,
+            setType: 'drop',
+            leftCompleted: true,
+            rightCompleted: true,
+            dropStages: [
+              { leftWeightKg: 40, leftReps: 6, rightWeightKg: 50, rightReps: 4 },
+              { leftWeightKg: 30, leftReps: 8, rightWeightKg: 35, rightReps: 6 },
+            ],
+          },
+        ],
+      },
+    ];
+    const cands = derivePrCandidates(exercises);
+    const byType = Object.fromEntries(cands.map((c) => [c.recordType, c]));
+    // Top stage heavier side is the RIGHT side 50×4.
+    expect(byType.max_weight.value).toBe(50);
+    expect(byType.max_weight.reps).toBe(4);
+    // Volume candidate is the both-sides stage sum: 40*6+50*4+30*8+35*6 = 890.
+    expect(byType.max_volume.value).toBe(890);
+  });
+
+  it('bestSetForWorkout ignores a unilateral set whose sides are not completed', () => {
+    const notBothDone: WorkoutSetData = {
+      setNumber: 1,
+      completed: false,
+      leftWeightKg: 40,
+      leftReps: 10,
+      rightWeightKg: 35,
+      rightReps: 10,
+      leftCompleted: true,
+      rightCompleted: false,
+    };
+    expect(bestSetForWorkout([notBothDone])).toBeNull();
+  });
+});
+
+describe('unilateral zod validator', () => {
+  const baseExercise = { exerciseId: 'one-arm-cable-row', order: 0 };
+  const parseSet = (set: Record<string, unknown>) =>
+    workoutUpsertSchema.safeParse({ name: 'W', exercises: [{ ...baseExercise, sets: [set] }] });
+
+  it('ACCEPTS a unilateral per-side payload', () => {
+    const res = parseSet({
+      setNumber: 1,
+      leftWeightKg: 40,
+      leftReps: 10,
+      rightWeightKg: 35,
+      rightReps: 10,
+      leftCompleted: true,
+      rightCompleted: false,
+    });
+    expect(res.success).toBe(true);
+  });
+
+  it('ACCEPTS a unilateral drop payload (per-side stage fields)', () => {
+    const res = parseSet({
+      setNumber: 1,
+      setType: 'drop',
+      leftCompleted: true,
+      rightCompleted: true,
+      dropStages: [
+        { leftWeightKg: 40, leftReps: 6, rightWeightKg: 50, rightReps: 4 },
+      ],
+    });
+    expect(res.success).toBe(true);
+  });
+
+  it('still ACCEPTS a legacy bilateral payload (backward compat)', () => {
+    const res = parseSet({ setNumber: 1, weightKg: 60, reps: 8, completed: true });
+    expect(res.success).toBe(true);
+  });
+
+  it('REJECTS an out-of-range per-side weight', () => {
+    const res = parseSet({ setNumber: 1, leftWeightKg: 5000, leftReps: 10 });
+    expect(res.success).toBe(false);
+  });
+
+  it('REJECTS a negative per-side reps', () => {
+    const res = parseSet({ setNumber: 1, rightWeightKg: 40, rightReps: -1 });
+    expect(res.success).toBe(false);
+  });
+});

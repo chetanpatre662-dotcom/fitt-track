@@ -136,6 +136,12 @@ type DetailBody = {
           completed: boolean;
           setType?: string;
           dropStages?: Array<{ weightKg: number | null; reps: number | null }>;
+          leftWeightKg?: number | null;
+          rightWeightKg?: number | null;
+          leftReps?: number | null;
+          rightReps?: number | null;
+          leftCompleted?: boolean;
+          rightCompleted?: boolean;
         }>;
       }>;
     } | null;
@@ -371,13 +377,59 @@ describe('GET /api/trainer/students/:studentUid/workouts/:workoutId', () => {
       const body = (await res.json()) as DetailBody;
       const sets = body.data.workout!.exercises[0].sets;
       expect(sets[0].setType).toBe('drop');
-      expect(sets[0].dropStages).toEqual([
-        { weightKg: 20, reps: 8 },
-        { weightKg: null, reps: 10 },
-      ]);
+      // Per-stage weight/reps coerced; the additive per-side keys are present
+      // and null for a bilateral drop stage (toMatchObject tolerates them).
+      expect(sets[0].dropStages).toHaveLength(2);
+      expect(sets[0].dropStages![0]).toMatchObject({ weightKg: 20, reps: 8 });
+      expect(sets[0].dropStages![1]).toMatchObject({ weightKg: null, reps: 10 });
       // Legacy set -> normal/empty.
       expect(sets[1].setType).toBe('normal');
       expect(sets[1].dropStages).toEqual([]);
+    } finally {
+      close();
+    }
+  });
+
+  it('MEDIUM-2: a persisted unilateral set survives the trainer projection with distinct L/R', async () => {
+    docs.set('users/owned-stu/workouts/wuni', {
+      name: 'Arm Day',
+      status: 'completed',
+      startedAt: ts('2024-03-04T09:00:00.000Z'),
+      exercises: [
+        {
+          exerciseId: 'one-arm-cable-row',
+          name: 'One Arm Cable Row',
+          order: 0,
+          sets: [
+            {
+              setNumber: 1,
+              completed: false,
+              leftWeightKg: 40,
+              leftReps: 10,
+              rightWeightKg: 35,
+              rightReps: 8,
+              leftCompleted: true,
+              rightCompleted: false,
+            },
+          ],
+        },
+      ],
+    });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/owned-stu/workouts/wuni`, {
+        headers: auth('trainer-token'),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as DetailBody;
+      const set = body.data.workout!.exercises[0].sets[0];
+      // L and R survive and are DISTINCT (not dropped by the whitelist).
+      expect(set.leftWeightKg).toBe(40);
+      expect(set.rightWeightKg).toBe(35);
+      expect(set.leftReps).toBe(10);
+      expect(set.rightReps).toBe(8);
+      expect(set.leftCompleted).toBe(true);
+      expect(set.rightCompleted).toBe(false);
     } finally {
       close();
     }

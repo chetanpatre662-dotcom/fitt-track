@@ -4,6 +4,12 @@ import { EXERCISE_TYPES, MUSCLE_GROUPS, WORKOUT_STATUSES } from '../models/domai
 const dropStageSchema = z.object({
   weightKg: z.number().min(0).max(1000).nullable().optional(),
   reps: z.number().int().min(0).max(1000).nullable().optional(),
+  // Per-side values for a unilateral drop stage (all optional/nullable so
+  // legacy and bilateral payloads still validate).
+  leftWeightKg: z.number().min(0).max(1000).nullable().optional(),
+  rightWeightKg: z.number().min(0).max(1000).nullable().optional(),
+  leftReps: z.number().int().min(0).max(1000).nullable().optional(),
+  rightReps: z.number().int().min(0).max(1000).nullable().optional(),
 });
 
 const setSchema = z
@@ -18,6 +24,14 @@ const setSchema = z
     // Additive drop-set fields (both optional so legacy payloads still validate).
     setType: z.enum(['normal', 'drop']).optional(),
     dropStages: z.array(dropStageSchema).max(12).optional(),
+    // Additive unilateral per-side fields (all optional so legacy and bilateral
+    // payloads still validate). Presence of any makes the set unilateral.
+    leftWeightKg: z.number().min(0).max(1000).nullable().optional(),
+    rightWeightKg: z.number().min(0).max(1000).nullable().optional(),
+    leftReps: z.number().int().min(0).max(1000).nullable().optional(),
+    rightReps: z.number().int().min(0).max(1000).nullable().optional(),
+    leftCompleted: z.boolean().optional(),
+    rightCompleted: z.boolean().optional(),
   })
   .superRefine((s, ctx) => {
     const isDrop = s.setType === 'drop';

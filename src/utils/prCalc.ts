@@ -1,6 +1,6 @@
 import type { PrType } from '../models/domain.js';
 import type { WorkoutExerciseData, WorkoutSetData } from './workoutCalc.js';
-import { setVolume, topStageOf } from './workoutCalc.js';
+import { setVolume, topStageOf, isSetCompleted } from './workoutCalc.js';
 
 /** A candidate personal-record value derived from a workout's completed sets. */
 export interface PrCandidate {
@@ -43,7 +43,7 @@ export function bestSetForWorkout(sets: WorkoutSetData[]): BestSet | null {
   // The PR-relevant weight/reps pair of each set is its TOP stage (stage 0 for
   // a drop set, the top-level values otherwise) — never a lighter drop stage.
   const valid = sets.filter((s) => {
-    if (s.completed !== true) return false;
+    if (!isSetCompleted(s)) return false;
     const top = topStageOf(s);
     return top.weightKg != null && top.weightKg > 0 && top.reps != null && top.reps > 0;
   });
@@ -85,7 +85,7 @@ export function derivePrCandidates(exercises: WorkoutExerciseData[]): PrCandidat
   const out: PrCandidate[] = [];
 
   for (const ex of exercises) {
-    const done = ex.sets.filter((s) => s.completed);
+    const done = ex.sets.filter((s) => isSetCompleted(s));
     if (done.length === 0) continue;
 
     // Strength candidates. The weight/reps pair comes from each set's TOP

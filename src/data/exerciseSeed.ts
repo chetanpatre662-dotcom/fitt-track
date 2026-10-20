@@ -743,6 +743,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 12,
     recommendedRestSeconds: 75,
     keywords: ['back', 'row', 'cable', 'single arm', 'one arm', 'one-arm', 'one arm cable row', 'lats', 'unilateral'],
+    unilateral: true,
   }),
   ex({
     id: 'straight-arm-lat-pulldown',
@@ -789,6 +790,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 12,
     recommendedRestSeconds: 75,
     keywords: ['back', 'row', 'dumbbell', 'db', 'single hand', 'single-hand', 'one arm', 'single hand dumbbell row', 'lats', 'unilateral'],
+    unilateral: true,
   }),
   ex({
     id: 'lat-pulldown',
@@ -879,6 +881,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 12,
     recommendedRestSeconds: 75,
     keywords: ['back', 'row', 'dumbbell', 'one arm', 'pull'],
+    unilateral: true,
   }),
   ex({
     id: 'seated-cable-row',
@@ -1574,6 +1577,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 15,
     recommendedRestSeconds: 60,
     keywords: ['biceps', 'concentration', 'curl', 'dumbbell', 'isolation'],
+    unilateral: true,
   }),
  
   ex({
@@ -1888,6 +1892,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 15,
     recommendedRestSeconds: 45,
     keywords: ['triceps', 'kickback', 'dumbbell', 'isolation'],
+    unilateral: true,
   }),
   ex({
     id: 'bench-dips',
@@ -1996,6 +2001,7 @@ export const EXERCISES: Exercise[] = [
     recommendedRepMax: 15,
     recommendedRestSeconds: 45,
     keywords: ['triceps', 'tricep', 'single arm', 'one arm', 'unilateral', 'cable', 'extension'],
+    unilateral: true,
   }),
   ex({
     id: 'ez-bar-skull-crusher',

@@ -955,9 +955,24 @@ function projectSetDetail(set: Record<string, unknown>): Record<string, unknown>
     calories: num(set.calories),
     completed: set.completed === true,
     setType: set.setType === 'drop' ? 'drop' : 'normal',
+    // Unilateral per-side values survive the trainer projection (this object is
+    // a fixed whitelist, so these must be added explicitly or L/R would drop).
+    leftWeightKg: num(set.leftWeightKg),
+    rightWeightKg: num(set.rightWeightKg),
+    leftReps: num(set.leftReps),
+    rightReps: num(set.rightReps),
+    leftCompleted: set.leftCompleted === true,
+    rightCompleted: set.rightCompleted === true,
     dropStages: rawStages.map((stage) => {
       const st = stage as Record<string, unknown>;
-      return { weightKg: num(st.weightKg), reps: num(st.reps) };
+      return {
+        weightKg: num(st.weightKg),
+        reps: num(st.reps),
+        leftWeightKg: num(st.leftWeightKg),
+        rightWeightKg: num(st.rightWeightKg),
+        leftReps: num(st.leftReps),
+        rightReps: num(st.rightReps),
+      };
     }),
   };
 }

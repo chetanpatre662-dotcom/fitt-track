@@ -137,6 +137,12 @@ export interface Exercise {
   imageUrl?: string;
   videoUrl?: string;
   keywords: string[];
+  /**
+   * Whether the movement is trained one side at a time, so the logger records
+   * independent left/right weight+reps. Optional/additive: absent means
+   * bilateral (the default). Do NOT infer this from the word "dumbbell".
+   */
+  unilateral?: boolean;
   /** Optional guide/demonstration content (populated per-exercise where curated). */
   startingPosition?: string;
   breathing?: string;
