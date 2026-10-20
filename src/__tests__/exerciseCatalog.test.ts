@@ -257,10 +257,10 @@ describe('exercise catalogue — catalogue + search expansion (§6/§7)', () => 
     expect(e.equipment).not.toContain('other');
   });
 
-  it('locks the expanded group counts (chest 31, legs 25, cardio 13, total 188)', () => {
+  it('locks the expanded group counts (chest 31, legs 25, cardio 13, total 193)', () => {
     const byPrimary = (g: MuscleGroup) => EXERCISES.filter((e) => e.primaryMuscle === g).length;
-    // 182 original + 6 new (2 chest, 3 back, 1 biceps) = 188.
-    expect(EXERCISES.length).toBe(188);
+    // 182 original + 6 (2 chest, 3 back, 1 biceps) + 5 FEAT-003 (1 biceps, 4 triceps) = 193.
+    expect(EXERCISES.length).toBe(193);
     expect(byPrimary('chest')).toBe(31);
     expect(byPrimary('legs')).toBe(25);
     expect(byPrimary('cardio')).toBe(13);
@@ -362,6 +362,80 @@ describe('exercise catalogue — eight-exercises feature', () => {
     expect(byFilter({ muscle: 'back', equipment: 'cable' })).toContain('one-arm-cable-row');
     expect(byFilter({ muscle: 'back', equipment: 'cable' })).toContain('straight-arm-lat-pulldown');
     expect(byFilter({ muscle: 'back', equipment: 'dumbbell' })).toContain('single-hand-dumbbell-row');
+  });
+});
+
+describe('exercise catalogue — biceps/triceps expansion (FEAT-003)', () => {
+  // 5 net-new ids delivered by FEAT-003 (the other 3 requested movements are
+  // enriched existing entries, not new ids).
+  const NEW_IDS = [
+    'ez-bar-cable-curl',
+    'single-arm-triceps-extension',
+    'close-grip-triceps-pushdown',
+    'ez-bar-triceps-extension',
+    'one-arm-dumbbell-triceps-extension',
+  ];
+  const byId = (id: string) => EXERCISES.find((e) => e.id === id)!;
+
+  it('adds the five new ids exactly once each, no duplicates', () => {
+    const ids = EXERCISES.map((e) => e.id);
+    for (const id of NEW_IDS) {
+      expect(ids, `missing ${id}`).toContain(id);
+      expect(ids.filter((x) => x === id).length, `duplicate ${id}`).toBe(1);
+    }
+    // whole-catalogue id uniqueness still holds after the additions
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('each new entry has the correct primaryMuscle and equipment', () => {
+    expect(byId('ez-bar-cable-curl').primaryMuscle).toBe('biceps');
+    expect(byId('ez-bar-cable-curl').equipment).toEqual(['cable', 'ez_bar']);
+    expect(byId('single-arm-triceps-extension').primaryMuscle).toBe('triceps');
+    expect(byId('single-arm-triceps-extension').equipment).toEqual(['dumbbell']);
+    expect(byId('close-grip-triceps-pushdown').primaryMuscle).toBe('triceps');
+    expect(byId('close-grip-triceps-pushdown').equipment).toEqual(['cable']);
+    expect(byId('ez-bar-triceps-extension').primaryMuscle).toBe('triceps');
+    expect(byId('ez-bar-triceps-extension').equipment).toEqual(['ez_bar', 'bench']);
+    expect(byId('one-arm-dumbbell-triceps-extension').primaryMuscle).toBe('triceps');
+    expect(byId('one-arm-dumbbell-triceps-extension').equipment).toEqual(['dumbbell']);
+  });
+
+  it('each new entry is searchable by a keyword phrase', () => {
+    expect(find('ez bar cable curl')).toContain('ez-bar-cable-curl');
+    expect(find('single arm triceps extension')).toContain('single-arm-triceps-extension');
+    expect(find('close grip triceps pushdown')).toContain('close-grip-triceps-pushdown');
+    expect(find('ez bar triceps extension')).toContain('ez-bar-triceps-extension');
+    expect(find('one arm dumbbell overhead triceps extension')).toContain('one-arm-dumbbell-triceps-extension');
+  });
+
+  it('the three enriched existing movements remain searchable by their new phrases', () => {
+    expect(find('ez bar biceps curl')).toContain('ez-bar-curl');
+    expect(find('overhead triceps extension')).toContain('overhead-triceps-extension');
+    expect(find('one arm cable triceps extension')).toContain('single-arm-cable-extension');
+  });
+
+  it('the three requested unilateral movements carry unilateral:true', () => {
+    expect(byId('single-arm-triceps-extension').unilateral).toBe(true);
+    expect(byId('one-arm-dumbbell-triceps-extension').unilateral).toBe(true);
+    expect(byId('single-arm-cable-extension').unilateral).toBe(true);
+  });
+
+  it('the set of seed ids flagged unilateral:true equals the canonical 8-id literal', () => {
+    const flagged = new Set(EXERCISES.filter((e) => e.unilateral === true).map((e) => e.id));
+    const expected = new Set([
+      'one-arm-cable-row',
+      'single-hand-dumbbell-row',
+      'single-arm-cable-extension',
+      'concentration-curl',
+      'dumbbell-kickback',
+      'dumbbell-row',
+      'single-arm-triceps-extension',
+      'one-arm-dumbbell-triceps-extension',
+    ]);
+    expect(flagged).toEqual(expected);
+    // dumbbell-row specifically must be present (distinct from single-hand-dumbbell-row)
+    expect(flagged.has('dumbbell-row')).toBe(true);
+    expect(flagged.size).toBe(8);
   });
 });
 
