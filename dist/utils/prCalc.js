@@ -23,7 +23,7 @@ function bestSetForWorkout(sets) {
     // The PR-relevant weight/reps pair of each set is its TOP stage (stage 0 for
     // a drop set, the top-level values otherwise) — never a lighter drop stage.
     const valid = sets.filter((s) => {
-        if (s.completed !== true)
+        if (!(0, workoutCalc_js_1.isSetCompleted)(s))
             return false;
         const top = (0, workoutCalc_js_1.topStageOf)(s);
         return top.weightKg != null && top.weightKg > 0 && top.reps != null && top.reps > 0;
@@ -62,7 +62,7 @@ function bestSetForWorkout(sets) {
 function derivePrCandidates(exercises) {
     const out = [];
     for (const ex of exercises) {
-        const done = ex.sets.filter((s) => s.completed);
+        const done = ex.sets.filter((s) => (0, workoutCalc_js_1.isSetCompleted)(s));
         if (done.length === 0)
             continue;
         // Strength candidates. The weight/reps pair comes from each set's TOP

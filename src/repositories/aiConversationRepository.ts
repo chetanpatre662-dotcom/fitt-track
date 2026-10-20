@@ -79,15 +79,24 @@ export class AiConversationRepository {
     return out;
   }
 
-  /** Returns all messages in a conversation, oldest-first. Owner-scoped. */
+  /**
+   * Returns the most recent [limit] messages in a conversation, oldest-first.
+   * Owner-scoped. Bounding the read keeps opening a long-lived thread fast
+   * (the client no longer awaits the entire history before navigating); the
+   * oldest-first shape is preserved so callers need no change. Mirrors the
+   * `limitToLast` approach used by [recentMessages]; served by the existing
+   * `messages (createdAt ASC)` index.
+   */
   async getMessages(
     uid: string,
     conversationId: string,
+    limit = 30,
   ): Promise<Array<{ role: string; text: string; createdAt: string | null }>> {
     const snap = await this.conversations(uid)
       .doc(conversationId)
       .collection('messages')
       .orderBy('createdAt', 'asc')
+      .limitToLast(limit)
       .get();
     return snap.docs.map((d) => mapMessage(d.data() as Record<string, unknown>));
   }

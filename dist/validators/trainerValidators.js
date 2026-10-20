@@ -157,10 +157,19 @@ exports.dietPlanUpsertSchema = zod_1.z
     .object({
     text: zod_1.z.string().max(5000).nullable().optional(),
     imageStoragePath: zod_1.z.string().min(1).max(500).nullable().optional(),
+    // How to treat the stored image on this upsert:
+    //   'keep'    -> leave the existing image untouched (no delete) — a text-only
+    //                edit must NOT drop an attached photo.
+    //   'replace' -> a new image was uploaded (imageStoragePath carries its path).
+    //   'remove'  -> clear the image and best-effort delete the Storage object.
+    // Absent -> legacy behaviour (image follows imageStoragePath; a missing path
+    // clears+deletes), kept for backward compatibility.
+    imageAction: zod_1.z.enum(['keep', 'replace', 'remove']).optional(),
 })
     .strict()
     .refine((body) => (typeof body.text === 'string' && body.text.length > 0) ||
-    (typeof body.imageStoragePath === 'string' && body.imageStoragePath.length > 0), { message: 'A diet plan needs text or an image.' });
+    (typeof body.imageStoragePath === 'string' && body.imageStoragePath.length > 0) ||
+    body.imageAction === 'keep', { message: 'A diet plan needs text or an image.' });
 /**
  * Body schema for POST /trainer/students/:studentUid/workouts/assign. A trainer
  * schedules a named workout for a date with 1..60 exercise lines, each carrying

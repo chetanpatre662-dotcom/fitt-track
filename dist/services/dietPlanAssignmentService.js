@@ -40,14 +40,41 @@ class DietPlanAssignmentService {
      */
     async assignForStudent(trainerId, studentUid, input) {
         const text = typeof input.text === 'string' && input.text.length > 0 ? input.text : null;
-        const imageStoragePath = typeof input.imageStoragePath === 'string' && input.imageStoragePath.length > 0
+        const uploadedPath = typeof input.imageStoragePath === 'string' && input.imageStoragePath.length > 0
             ? input.imageStoragePath
             : null;
+        const existing = await dietPlanRepository_js_1.dietPlanRepository.get(studentUid);
+        const previousPath = existing?.imageStoragePath ?? null;
+        // Resolve the image path to persist and whether the previous object should
+        // be cleaned up, honouring the explicit imageAction when present and
+        // falling back to the legacy path-driven behaviour when it is absent.
+        //   keep    -> keep previousPath, never delete (fixes the text-only data loss).
+        //   replace -> persist the newly uploaded path, delete the old (if different).
+        //   remove  -> persist null, delete the old.
+        //   (absent)-> legacy: persist uploadedPath, delete old when it differs.
+        let imageStoragePath;
+        let shouldCleanup;
+        switch (input.imageAction) {
+            case 'keep':
+                imageStoragePath = previousPath;
+                shouldCleanup = false;
+                break;
+            case 'replace':
+                imageStoragePath = uploadedPath;
+                shouldCleanup = true;
+                break;
+            case 'remove':
+                imageStoragePath = null;
+                shouldCleanup = true;
+                break;
+            default:
+                imageStoragePath = uploadedPath;
+                shouldCleanup = true;
+                break;
+        }
         if (imageStoragePath) {
             this.assertOwnedPath(trainerId, studentUid, imageStoragePath);
         }
-        const existing = await dietPlanRepository_js_1.dietPlanRepository.get(studentUid);
-        const previousPath = existing?.imageStoragePath ?? null;
         const saved = await dietPlanRepository_js_1.dietPlanRepository.upsert(studentUid, {
             trainerId,
             studentUid,
@@ -57,7 +84,8 @@ class DietPlanAssignmentService {
         });
         // Best-effort cleanup: drop a replaced/removed image object so Storage does
         // not accumulate orphans. Never fatal — the plan write is authoritative.
-        if (previousPath && previousPath !== imageStoragePath) {
+        // Skipped entirely when the caller asked to KEEP the existing image.
+        if (shouldCleanup && previousPath && previousPath !== imageStoragePath) {
             try {
                 await (0, firebase_js_1.getBucket)().file(previousPath).delete({ ignoreNotFound: true });
             }

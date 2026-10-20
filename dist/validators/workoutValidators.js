@@ -6,6 +6,12 @@ const domain_js_1 = require("../models/domain.js");
 const dropStageSchema = zod_1.z.object({
     weightKg: zod_1.z.number().min(0).max(1000).nullable().optional(),
     reps: zod_1.z.number().int().min(0).max(1000).nullable().optional(),
+    // Per-side values for a unilateral drop stage (all optional/nullable so
+    // legacy and bilateral payloads still validate).
+    leftWeightKg: zod_1.z.number().min(0).max(1000).nullable().optional(),
+    rightWeightKg: zod_1.z.number().min(0).max(1000).nullable().optional(),
+    leftReps: zod_1.z.number().int().min(0).max(1000).nullable().optional(),
+    rightReps: zod_1.z.number().int().min(0).max(1000).nullable().optional(),
 });
 const setSchema = zod_1.z
     .object({
@@ -19,6 +25,14 @@ const setSchema = zod_1.z
     // Additive drop-set fields (both optional so legacy payloads still validate).
     setType: zod_1.z.enum(['normal', 'drop']).optional(),
     dropStages: zod_1.z.array(dropStageSchema).max(12).optional(),
+    // Additive unilateral per-side fields (all optional so legacy and bilateral
+    // payloads still validate). Presence of any makes the set unilateral.
+    leftWeightKg: zod_1.z.number().min(0).max(1000).nullable().optional(),
+    rightWeightKg: zod_1.z.number().min(0).max(1000).nullable().optional(),
+    leftReps: zod_1.z.number().int().min(0).max(1000).nullable().optional(),
+    rightReps: zod_1.z.number().int().min(0).max(1000).nullable().optional(),
+    leftCompleted: zod_1.z.boolean().optional(),
+    rightCompleted: zod_1.z.boolean().optional(),
 })
     .superRefine((s, ctx) => {
     const isDrop = s.setType === 'drop';
