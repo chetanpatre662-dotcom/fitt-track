@@ -11,6 +11,18 @@ const SIGNED_URL_TTL_MS = 15 * 60 * 1000;
 export interface DietPlanInput {
   text?: string | null;
   imageStoragePath?: string | null;
+  /**
+   * How to treat the stored image on this upsert (added in FEAT-004):
+   *   'keep'    -> preserve the existing stored image path and SKIP the
+   *                cleanup/delete block, so a text-only edit never drops the
+   *                attached photo (fixes the data-loss bug).
+   *   'replace' -> a newly uploaded image (in `imageStoragePath`) replaces the
+   *                old one; the replaced object is best-effort deleted.
+   *   'remove'  -> clear the image and best-effort delete the stored object.
+   * Absent -> legacy behaviour (image follows imageStoragePath; a missing path
+   * clears + deletes), preserved for backward compatibility.
+   */
+  imageAction?: 'keep' | 'replace' | 'remove';
 }
 
 /** The resolved diet plan returned to a client (image via signed URL only). */
@@ -57,17 +69,45 @@ export class DietPlanAssignmentService {
     input: DietPlanInput,
   ): Promise<ResolvedDietPlan> {
     const text = typeof input.text === 'string' && input.text.length > 0 ? input.text : null;
-    const imageStoragePath =
+    const uploadedPath =
       typeof input.imageStoragePath === 'string' && input.imageStoragePath.length > 0
         ? input.imageStoragePath
         : null;
 
+    const existing = await dietPlanRepository.get(studentUid);
+    const previousPath = (existing?.imageStoragePath as string | undefined) ?? null;
+
+    // Resolve the image path to persist and whether the previous object should
+    // be cleaned up, honouring the explicit imageAction when present and
+    // falling back to the legacy path-driven behaviour when it is absent.
+    //   keep    -> keep previousPath, never delete (fixes the text-only data loss).
+    //   replace -> persist the newly uploaded path, delete the old (if different).
+    //   remove  -> persist null, delete the old.
+    //   (absent)-> legacy: persist uploadedPath, delete old when it differs.
+    let imageStoragePath: string | null;
+    let shouldCleanup: boolean;
+    switch (input.imageAction) {
+      case 'keep':
+        imageStoragePath = previousPath;
+        shouldCleanup = false;
+        break;
+      case 'replace':
+        imageStoragePath = uploadedPath;
+        shouldCleanup = true;
+        break;
+      case 'remove':
+        imageStoragePath = null;
+        shouldCleanup = true;
+        break;
+      default:
+        imageStoragePath = uploadedPath;
+        shouldCleanup = true;
+        break;
+    }
+
     if (imageStoragePath) {
       this.assertOwnedPath(trainerId, studentUid, imageStoragePath);
     }
-
-    const existing = await dietPlanRepository.get(studentUid);
-    const previousPath = (existing?.imageStoragePath as string | undefined) ?? null;
 
     const saved = await dietPlanRepository.upsert(studentUid, {
       trainerId,
@@ -79,7 +119,8 @@ export class DietPlanAssignmentService {
 
     // Best-effort cleanup: drop a replaced/removed image object so Storage does
     // not accumulate orphans. Never fatal — the plan write is authoritative.
-    if (previousPath && previousPath !== imageStoragePath) {
+    // Skipped entirely when the caller asked to KEEP the existing image.
+    if (shouldCleanup && previousPath && previousPath !== imageStoragePath) {
       try {
         await getBucket().file(previousPath).delete({ ignoreNotFound: true });
       } catch (err) {

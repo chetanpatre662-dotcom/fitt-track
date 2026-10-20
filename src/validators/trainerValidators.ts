@@ -173,12 +173,21 @@ export const dietPlanUpsertSchema = z
   .object({
     text: z.string().max(5000).nullable().optional(),
     imageStoragePath: z.string().min(1).max(500).nullable().optional(),
+    // How to treat the stored image on this upsert:
+    //   'keep'    -> leave the existing image untouched (no delete) — a text-only
+    //                edit must NOT drop an attached photo.
+    //   'replace' -> a new image was uploaded (imageStoragePath carries its path).
+    //   'remove'  -> clear the image and best-effort delete the Storage object.
+    // Absent -> legacy behaviour (image follows imageStoragePath; a missing path
+    // clears+deletes), kept for backward compatibility.
+    imageAction: z.enum(['keep', 'replace', 'remove']).optional(),
   })
   .strict()
   .refine(
     (body) =>
       (typeof body.text === 'string' && body.text.length > 0) ||
-      (typeof body.imageStoragePath === 'string' && body.imageStoragePath.length > 0),
+      (typeof body.imageStoragePath === 'string' && body.imageStoragePath.length > 0) ||
+      body.imageAction === 'keep',
     { message: 'A diet plan needs text or an image.' },
   );
 
