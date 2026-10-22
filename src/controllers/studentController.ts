@@ -11,12 +11,27 @@ import {
   type LinkTrainerInput,
   type SharingCategory,
   type SharingPatchUnifiedInput,
+  type TrainerPreviewQueryInput,
 } from '../validators/trainerValidators.js';
 
 /** GET /api/student/trainer — the student's "My Trainer" card ({trainer:null} when unlinked). */
 export async function getTrainer(req: Request, res: Response): Promise<void> {
   const uid = requireUid(req);
   const result = await studentService.getTrainer(uid);
+  ok(res, result);
+}
+
+/**
+ * GET /api/student/trainer/preview?code= — resolve a trainer's PUBLIC profile
+ * by referral code before sending a connect request (QR scan / manual entry).
+ * Behind `authenticate` only (a student action). Returns 200 { found:false }
+ * for a well-formed unknown/inactive code (anti-enumeration), and
+ * 200 { found:true, trainer:{...public fields} } for a valid active code. A
+ * malformed code fails the query validator and yields a centralized 422.
+ */
+export async function previewTrainer(req: Request, res: Response): Promise<void> {
+  const { code } = req.query as unknown as TrainerPreviewQueryInput;
+  const result = await studentService.previewByCode(code);
   ok(res, result);
 }
 

@@ -13,6 +13,7 @@ import type {
   DietPlanUpsertInput,
   AssignWorkoutInput,
   BatchStudentUidsInput,
+  TrainerProfileInput,
 } from '../validators/trainerValidators.js';
 import type { MeasurementCreateInput } from '../validators/measurementValidators.js';
 
@@ -27,6 +28,18 @@ function todayKey(): string {
 export async function getProfile(req: Request, res: Response): Promise<void> {
   const trainerId = requireUid(req);
   const profile = await trainerService.getProfile(trainerId);
+  ok(res, { profile });
+}
+
+/**
+ * PATCH /api/trainer/profile — owner self-edit of the trainer profile. The body
+ * is validated by trainerProfileSchema; the service merges the patch onto
+ * trainers/{uid}, recomputes `profileCompleted`, and returns the fresh profile.
+ */
+export async function updateProfile(req: Request, res: Response): Promise<void> {
+  const trainerId = requireUid(req);
+  const patch = req.body as TrainerProfileInput;
+  const profile = await trainerService.updateTrainerProfile(trainerId, patch);
   ok(res, { profile });
 }
 

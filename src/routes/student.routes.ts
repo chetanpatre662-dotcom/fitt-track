@@ -2,7 +2,11 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
 import { asyncHandler } from '../utils/http.js';
-import { sharingPatchUnifiedSchema, linkTrainerSchema } from '../validators/trainerValidators.js';
+import {
+  sharingPatchUnifiedSchema,
+  linkTrainerSchema,
+  trainerPreviewQuerySchema,
+} from '../validators/trainerValidators.js';
 import * as c from '../controllers/studentController.js';
 
 const router = Router();
@@ -12,6 +16,14 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/trainer', asyncHandler(c.getTrainer));
+// Public-by-code trainer preview (QR scan / manual entry). A literal path, so
+// it does not collide with /trainer or /trainer/sharing. Behind `authenticate`
+// only — it is a student action and must NOT sit behind requireTrainer.
+router.get(
+  '/trainer/preview',
+  validate({ query: trainerPreviewQuerySchema }),
+  asyncHandler(c.previewTrainer),
+);
 // Student-initiated leave/withdraw: keyed by the authenticated uid, so there is
 // no request body and no validate() middleware.
 router.delete('/trainer', asyncHandler(c.leaveTrainer));

@@ -2,6 +2,8 @@ import { getFirestore, admin } from '../config/firebase.js';
 import { trainerLinkRepository } from '../repositories/trainerLinkRepository.js';
 import { trainerRepository } from '../repositories/trainerRepository.js';
 import { profileRepository } from '../repositories/profileRepository.js';
+import { roleService } from './roleService.js';
+import { normalize } from '../utils/referralCode.js';
 import { SHARING_CATEGORIES, type SharingCategory } from '../validators/trainerValidators.js';
 
 /** The outcome of a student-initiated leave/withdraw. */
@@ -90,8 +92,69 @@ export class StudentService {
     if (typeof trainer.bio !== 'undefined' && trainer.bio !== null) {
       card.bio = trainer.bio;
     }
+    // Public social links, surfaced with the SAME conditional-append contract
+    // as experience/bio. This `card` is a strict allow-list: it reads only the
+    // specific public keys and NEVER spreads the trainer doc, so the private
+    // profile fields (mobile, dateOfBirth, heightCm, weightKg, email) are
+    // omitted by construction and can never leak to a student (Req 10 / privacy
+    // invariant, enforced server-side).
+    if (typeof trainer.youtubeUrl !== 'undefined' && trainer.youtubeUrl !== null) {
+      card.youtubeUrl = trainer.youtubeUrl;
+    }
+    if (typeof trainer.instagramUrl !== 'undefined' && trainer.instagramUrl !== null) {
+      card.instagramUrl = trainer.instagramUrl;
+    }
 
     return { trainer: card };
+  }
+
+  /**
+   * Public-by-code preview for the QR scan / manual-entry connect flow
+   * (GET /api/student/trainer/preview?code=). Resolves the referral code via
+   * the index doc and the SAME role/status checks as requestTrainer, then
+   * returns ONLY the public fields — the identical conditional-append contract
+   * as getTrainer (optional public fields omitted when absent; private fields
+   * never read). It performs NO linking.
+   *
+   * Anti-enumeration: a well-formed but unknown/inactive/non-trainer code
+   * resolves to { found: false } (the route still returns 200) rather than
+   * leaking whether a code exists. A valid active code returns
+   * { found: true, trainer: { name, photoUrl, experience?, bio?, youtubeUrl?,
+   * instagramUrl? } } even when the trainer's public profile is incomplete
+   * (name is always present; the UI may still send a request).
+   */
+  async previewByCode(
+    code: string,
+  ): Promise<{ found: boolean; trainer?: Record<string, unknown> }> {
+    const codeLower = normalize(code);
+    const codeDoc = await trainerRepository.getByReferralCodeDoc(codeLower);
+    if (!codeDoc || !codeDoc.active) return { found: false };
+
+    const trainerId = codeDoc.trainerId;
+    const trainer = await trainerRepository.get(trainerId);
+    const resolvedRole = await roleService.resolveRole(trainerId);
+    if (resolvedRole !== 'trainer' || !trainer || trainer.status !== 'active') {
+      return { found: false };
+    }
+
+    // Public allow-list (never spreads the doc; private fields never read).
+    const card: Record<string, unknown> = {
+      name: trainer.name ?? null,
+      photoUrl: trainer.photoUrl ?? null,
+    };
+    if (typeof trainer.experience !== 'undefined' && trainer.experience !== null) {
+      card.experience = trainer.experience;
+    }
+    if (typeof trainer.bio !== 'undefined' && trainer.bio !== null) {
+      card.bio = trainer.bio;
+    }
+    if (typeof trainer.youtubeUrl !== 'undefined' && trainer.youtubeUrl !== null) {
+      card.youtubeUrl = trainer.youtubeUrl;
+    }
+    if (typeof trainer.instagramUrl !== 'undefined' && trainer.instagramUrl !== null) {
+      card.instagramUrl = trainer.instagramUrl;
+    }
+    return { found: true, trainer: card };
   }
 
   /**

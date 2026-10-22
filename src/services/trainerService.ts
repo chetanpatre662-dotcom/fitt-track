@@ -14,7 +14,7 @@ import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../mi
 import { ConflictError, BadRequestError, ServiceUnavailableError } from '../utils/errors.js';
 import { generateCandidate, normalize, type Rng } from '../utils/referralCode.js';
 import { referralCodeSchema, availabilityQuerySchema } from '../validators/trainerValidators.js';
-import type { SharingCategory } from '../validators/trainerValidators.js';
+import type { SharingCategory, TrainerProfileInput } from '../validators/trainerValidators.js';
 
 /** A trainer reference used in connect/switch responses. */
 export interface TrainerRef {
@@ -667,6 +667,70 @@ export class TrainerService {
     const trainer = (await trainerRepository.get(trainerId)) ?? { trainerId };
     const activeStudents = await trainerRepository.countActiveStudents(trainerId);
     return { ...trainer, totalStudents: activeStudents };
+  }
+
+  /**
+   * Applies a validated partial trainer-profile patch to trainers/{uid} and
+   * recomputes `profileCompleted`. Additive + backward-compatible: only the
+   * provided keys are written (merge), the canonical `trainerId`/`userId` and
+   * `role:'trainer'` identity are preserved, and no second trainer record is
+   * created. `profileCompleted` is set true only when ALL required fields —
+   * name, mobile, dateOfBirth, heightCm, weightKg, experience — are present and
+   * non-empty on the MERGED document (existing stored values + this patch), so
+   * a partial edit never silently drops completeness. Returns the fresh profile
+   * (same shape as getProfile) for edit prefill.
+   */
+  async updateTrainerProfile(
+    trainerId: string,
+    patch: TrainerProfileInput,
+  ): Promise<Record<string, unknown>> {
+    const now = admin.firestore.FieldValue.serverTimestamp();
+    const existing = (await trainerRepository.get(trainerId)) ?? {};
+
+    // The merged view used to decide completeness (stored values overlaid by
+    // this patch). Only keys explicitly present in the patch are considered
+    // changed; `undefined` patch keys fall back to the stored value.
+    const merged: Record<string, unknown> = { ...existing };
+    for (const [key, value] of Object.entries(patch)) {
+      if (typeof value !== 'undefined') merged[key] = value;
+    }
+
+    const hasText = (value: unknown): boolean =>
+      typeof value === 'string' && value.trim().length > 0;
+    const hasNumber = (value: unknown): boolean =>
+      typeof value === 'number' && Number.isFinite(value);
+
+    const profileCompleted =
+      hasText(merged.name) &&
+      hasText(merged.mobile) &&
+      hasText(merged.dateOfBirth) &&
+      hasNumber(merged.heightCm) &&
+      hasNumber(merged.weightKg) &&
+      hasText(merged.experience);
+
+    const update: Record<string, unknown> = {
+      trainerId,
+      userId: trainerId,
+      role: 'trainer',
+      profileCompleted,
+      updatedAt: now,
+    };
+    // Keys whose empty-string value means "cleared" — store `null` rather than
+    // `''` so the student projection's conditional-append (which omits null)
+    // honors the "omit when absent" contract instead of surfacing an empty
+    // string over the wire.
+    const clearToNull = new Set(['youtubeUrl', 'instagramUrl']);
+    for (const [key, value] of Object.entries(patch)) {
+      if (typeof value === 'undefined') continue;
+      if (clearToNull.has(key) && typeof value === 'string' && value.trim().length === 0) {
+        update[key] = null;
+      } else {
+        update[key] = value;
+      }
+    }
+
+    await trainerRepository.upsert(trainerId, update);
+    return this.getProfile(trainerId);
   }
 
   /** Per-student summary cards for the dashboard student list. */

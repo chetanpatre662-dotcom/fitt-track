@@ -119,6 +119,10 @@ vi.mock('../config/firebase.js', () => ({
 
 import { trainerService } from '../services/trainerService.js';
 import { studentService } from '../services/studentService.js';
+import {
+  trainerProfileSchema,
+  trainerPreviewQuerySchema,
+} from '../validators/trainerValidators.js';
 import { dietPlanAssignmentService } from '../services/dietPlanAssignmentService.js';
 import { assignedWorkoutService } from '../services/assignedWorkoutService.js';
 import { assertTrainerOwnsStudent, assertTrainerOwnsPendingRequest } from '../middleware/role.js';
@@ -723,6 +727,256 @@ describe('StudentService.getTrainer (My Trainer card)', () => {
     });
     const present = await studentService.getTrainer('stu-a');
     expect(present.trainer).toMatchObject({ experience: '5 years', bio: 'Strength coach' });
+  });
+
+  it('surfaces public youtubeUrl/instagramUrl only when present', async () => {
+    docs.set('trainerLinks/stu-s', { trainerId: TRAINER, status: 'active' });
+    const absent = await studentService.getTrainer('stu-s');
+    expect(absent.trainer).not.toHaveProperty('youtubeUrl');
+    expect(absent.trainer).not.toHaveProperty('instagramUrl');
+
+    docs.set('trainers/trainer-1', {
+      ...(docs.get('trainers/trainer-1') as Record<string, unknown>),
+      youtubeUrl: 'https://youtube.com/@coach',
+      instagramUrl: 'https://instagram.com/coach',
+    });
+    const present = await studentService.getTrainer('stu-s');
+    expect(present.trainer).toMatchObject({
+      youtubeUrl: 'https://youtube.com/@coach',
+      instagramUrl: 'https://instagram.com/coach',
+    });
+  });
+
+  it('NEVER leaks private trainer fields even when present on the doc (HIGH-3)', async () => {
+    docs.set('trainerLinks/stu-priv', { trainerId: TRAINER, status: 'active' });
+    // A trainer doc carrying ALL private fields plus public ones.
+    docs.set('trainers/trainer-1', {
+      ...(docs.get('trainers/trainer-1') as Record<string, unknown>),
+      mobile: '+1 555 0100',
+      dateOfBirth: '1990-05-01',
+      heightCm: 182,
+      weightKg: 80,
+      email: 'coach@example.com',
+      experience: '5 years',
+      youtubeUrl: 'https://youtube.com/@coach',
+      instagramUrl: 'https://instagram.com/coach',
+    });
+    const res = await studentService.getTrainer('stu-priv');
+    const card = res.trainer as Record<string, unknown>;
+    // The student-facing card is a strict allow-list: none of the five private
+    // keys may ever appear, even though they exist on the doc.
+    for (const key of ['mobile', 'dateOfBirth', 'heightCm', 'weightKg', 'email']) {
+      expect(card).not.toHaveProperty(key);
+    }
+    // Public fields still flow.
+    expect(card).toMatchObject({
+      experience: '5 years',
+      youtubeUrl: 'https://youtube.com/@coach',
+      instagramUrl: 'https://instagram.com/coach',
+    });
+  });
+});
+
+describe('TrainerService.updateTrainerProfile (PATCH /api/trainer/profile)', () => {
+  it('sets profileCompleted=true when all required fields are present/valid', async () => {
+    const result = await trainerService.updateTrainerProfile(TRAINER, {
+      name: 'Alex Carter',
+      mobile: '+1 555 0100',
+      dateOfBirth: '1990-05-01',
+      heightCm: 182,
+      weightKg: 80,
+      experience: '5 years',
+      bio: 'Strength coach',
+      youtubeUrl: 'https://youtube.com/@coach',
+      instagramUrl: 'https://instagram.com/coach',
+    });
+    expect(result.profileCompleted).toBe(true);
+    const stored = docs.get('trainers/trainer-1') as Record<string, unknown>;
+    expect(stored).toMatchObject({
+      mobile: '+1 555 0100',
+      heightCm: 182,
+      role: 'trainer',
+      profileCompleted: true,
+    });
+    // Identity + public read path preserved.
+    expect(stored.trainerId).toBe(TRAINER);
+  });
+
+  it('leaves profileCompleted=false on a partial patch missing a required field', async () => {
+    const result = await trainerService.updateTrainerProfile(TRAINER, {
+      bio: 'Just a bio edit',
+    });
+    expect(result.profileCompleted).toBe(false);
+    // The patched field is written without clobbering identity.
+    expect((docs.get('trainers/trainer-1') as Record<string, unknown>).bio).toBe(
+      'Just a bio edit',
+    );
+  });
+
+  it('stores a cleared social URL as null so the student projection omits it', async () => {
+    // Seed a stored link, then clear youtube with an empty string.
+    docs.set('trainerLinks/stu-clear', { trainerId: TRAINER, status: 'active' });
+    await trainerService.updateTrainerProfile(TRAINER, {
+      youtubeUrl: '  ',
+      instagramUrl: 'https://instagram.com/coach',
+    });
+    const stored = docs.get('trainers/trainer-1') as Record<string, unknown>;
+    // Cleared -> null (not an empty string) so the conditional-append omits it.
+    expect(stored.youtubeUrl).toBeNull();
+    expect(stored.instagramUrl).toBe('https://instagram.com/coach');
+
+    const card = (await studentService.getTrainer('stu-clear')).trainer;
+    expect(card).not.toHaveProperty('youtubeUrl');
+    expect(card).toMatchObject({ instagramUrl: 'https://instagram.com/coach' });
+  });
+
+  it('computes completeness from the MERGED doc (stored + patch)', async () => {
+    // First save the required set except experience.
+    await trainerService.updateTrainerProfile(TRAINER, {
+      name: 'Alex Carter',
+      mobile: '+1 555 0100',
+      dateOfBirth: '1990-05-01',
+      heightCm: 182,
+      weightKg: 80,
+    });
+    expect((docs.get('trainers/trainer-1') as Record<string, unknown>).profileCompleted).toBe(
+      false,
+    );
+    // A later patch that only adds experience flips completeness to true.
+    const result = await trainerService.updateTrainerProfile(TRAINER, {
+      experience: '5 years',
+    });
+    expect(result.profileCompleted).toBe(true);
+  });
+});
+
+describe('StudentService.previewByCode (public-by-code preview)', () => {
+  it('returns found:true + PUBLIC fields for a valid active code', async () => {
+    docs.set('trainers/trainer-1', {
+      ...(docs.get('trainers/trainer-1') as Record<string, unknown>),
+      experience: '5 years',
+      youtubeUrl: 'https://youtube.com/@coach',
+      // Private fields present on the doc must NOT be surfaced.
+      mobile: '+1 555 0100',
+      heightCm: 182,
+      email: 'coach@example.com',
+    });
+    const res = await studentService.previewByCode('FITCHE123');
+    expect(res.found).toBe(true);
+    expect(res.trainer).toMatchObject({
+      name: 'Alex Carter',
+      experience: '5 years',
+      youtubeUrl: 'https://youtube.com/@coach',
+    });
+    for (const key of ['mobile', 'dateOfBirth', 'heightCm', 'weightKg', 'email']) {
+      expect(res.trainer).not.toHaveProperty(key);
+    }
+  });
+
+  it('returns found:false for an unknown code (anti-enumeration)', async () => {
+    expect(await studentService.previewByCode('nope123')).toEqual({ found: false });
+  });
+
+  it('returns found:false for an inactive code', async () => {
+    docs.set('referralCodes/fitche123', {
+      trainerId: TRAINER,
+      code: 'FITCHE123',
+      active: false,
+    });
+    expect(await studentService.previewByCode('FITCHE123')).toEqual({ found: false });
+  });
+
+  it('omits optional public fields when absent (name always present)', async () => {
+    const res = await studentService.previewByCode('FITCHE123');
+    expect(res.found).toBe(true);
+    expect(res.trainer).toHaveProperty('name');
+    expect(res.trainer).not.toHaveProperty('experience');
+    expect(res.trainer).not.toHaveProperty('youtubeUrl');
+  });
+});
+
+describe('trainerProfileSchema validation', () => {
+  const valid = {
+    name: 'Alex',
+    mobile: '+1 555 0100',
+    dateOfBirth: '1990-05-01',
+    heightCm: 182,
+    weightKg: 80,
+    experience: '5 years',
+    bio: 'Strength coach',
+    youtubeUrl: 'https://youtube.com/@coach',
+    instagramUrl: 'https://instagram.com/coach',
+  };
+
+  it('accepts a complete valid patch', () => {
+    expect(trainerProfileSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it('accepts a partial patch (single field)', () => {
+    expect(trainerProfileSchema.safeParse({ bio: 'x' }).success).toBe(true);
+  });
+
+  it('rejects an empty body', () => {
+    expect(trainerProfileSchema.safeParse({}).success).toBe(false);
+  });
+
+  it('rejects a malformed mobile', () => {
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, mobile: 'abc' }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a future / underage date of birth', () => {
+    const nextYear = new Date().getUTCFullYear() + 1;
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, dateOfBirth: `${nextYear}-01-01` })
+        .success,
+    ).toBe(false);
+    const recent = new Date().getUTCFullYear() - 5;
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, dateOfBirth: `${recent}-01-01` })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects out-of-range height/weight', () => {
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, heightCm: 10 }).success,
+    ).toBe(false);
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, weightKg: 1000 }).success,
+    ).toBe(false);
+  });
+
+  it('rejects a non-https social URL but accepts empty string', () => {
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, youtubeUrl: 'http://youtube.com/x' })
+        .success,
+    ).toBe(false);
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, instagramUrl: 'javascript:alert(1)' })
+        .success,
+    ).toBe(false);
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, youtubeUrl: '' }).success,
+    ).toBe(true);
+  });
+
+  it('rejects unknown keys (.strict)', () => {
+    expect(
+      trainerProfileSchema.safeParse({ ...valid, hacker: true }).success,
+    ).toBe(false);
+  });
+});
+
+describe('trainerPreviewQuerySchema validation', () => {
+  it('trims + lowercases a well-formed code', () => {
+    const parsed = trainerPreviewQuerySchema.parse({ code: '  FitChe123  ' });
+    expect(parsed.code).toBe('fitche123');
+  });
+
+  it('rejects a too-short code', () => {
+    expect(trainerPreviewQuerySchema.safeParse({ code: 'ab' }).success).toBe(false);
   });
 });
 

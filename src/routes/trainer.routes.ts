@@ -13,6 +13,7 @@ import {
   assignWorkoutSchema,
   workoutDetailParamsSchema,
   batchStudentUidsSchema,
+  trainerProfileSchema,
 } from '../validators/trainerValidators.js';
 import { measurementCreateSchema } from '../validators/measurementValidators.js';
 import { exerciseProgressionQuerySchema } from '../validators/progressValidators.js';
@@ -25,6 +26,11 @@ router.use(authenticate);
 router.use(requireTrainer);
 
 router.get('/profile', asyncHandler(c.getProfile));
+router.patch(
+  '/profile',
+  validate({ body: trainerProfileSchema }),
+  asyncHandler(c.updateProfile),
+);
 router.get('/students', asyncHandler(c.listStudents));
 
 // Referral-code management (self-service, trainer-only).

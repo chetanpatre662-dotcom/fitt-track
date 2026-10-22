@@ -236,6 +236,143 @@ describe('/api/trainer authorization matrix', () => {
   });
 });
 
+describe('PATCH /api/trainer/profile (owner self-edit)', () => {
+  it('422 for a malformed body (bad mobile)', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/profile`, {
+        method: 'PATCH',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ mobile: 'nope' }),
+      });
+      expect(res.status).toBe(422);
+    } finally {
+      close();
+    }
+  });
+
+  it('422 for a non-https social URL', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/profile`, {
+        method: 'PATCH',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ youtubeUrl: 'http://youtube.com/x' }),
+      });
+      expect(res.status).toBe(422);
+    } finally {
+      close();
+    }
+  });
+
+  it('200 + profileCompleted=true for a complete valid patch', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/profile`, {
+        method: 'PATCH',
+        headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Alex Carter',
+          mobile: '+1 555 0100',
+          dateOfBirth: '1990-05-01',
+          heightCm: 182,
+          weightKg: 80,
+          experience: '5 years',
+          youtubeUrl: 'https://youtube.com/@coach',
+        }),
+      });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { profile: { profileCompleted: boolean } };
+      };
+      expect(body.data.profile.profileCompleted).toBe(true);
+      expect(docs.get('trainers/trainer-1')).toMatchObject({
+        mobile: '+1 555 0100',
+        profileCompleted: true,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('403 when a student token attempts the PATCH', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/profile`, {
+        method: 'PATCH',
+        headers: { ...auth('student-token'), 'content-type': 'application/json' },
+        body: JSON.stringify({ bio: 'x' }),
+      });
+      expect(res.status).toBe(403);
+    } finally {
+      close();
+    }
+  });
+});
+
+describe('GET /api/student/trainer/preview (public-by-code)', () => {
+  it('200 found:true + public fields for a valid active code (student token)', async () => {
+    docs.set('trainers/trainer-1', {
+      ...(docs.get('trainers/trainer-1') as Record<string, unknown>),
+      experience: '5 years',
+      mobile: '+1 555 0100',
+    });
+    const { url, close } = serve();
+    try {
+      const res = await fetch(
+        `${url}/api/student/trainer/preview?code=FITCHE123`,
+        { headers: auth('student-token') },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { found: boolean; trainer: Record<string, unknown> };
+      };
+      expect(body.data.found).toBe(true);
+      expect(body.data.trainer).toMatchObject({ name: 'Alex Carter', experience: '5 years' });
+      expect(body.data.trainer).not.toHaveProperty('mobile');
+    } finally {
+      close();
+    }
+  });
+
+  it('200 found:false for a well-formed unknown code (anti-enumeration)', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(
+        `${url}/api/student/trainer/preview?code=unknown99`,
+        { headers: auth('student-token') },
+      );
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { data: { found: boolean } };
+      expect(body.data.found).toBe(false);
+    } finally {
+      close();
+    }
+  });
+
+  it('422 for a malformed (too-short) code', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/student/trainer/preview?code=ab`, {
+        headers: auth('student-token'),
+      });
+      expect(res.status).toBe(422);
+    } finally {
+      close();
+    }
+  });
+
+  it('401 when unauthenticated', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/student/trainer/preview?code=FITCHE123`);
+      expect(res.status).toBe(401);
+    } finally {
+      close();
+    }
+  });
+});
+
 describe('/api/trainer/students/:uid/overview body-metric gate (measurements)', () => {
   /** owned-stu is active with trainer-1 (seeded by the top-level beforeEach). */
   function seedBodyProfile(measurements: boolean): void {

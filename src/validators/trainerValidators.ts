@@ -68,6 +68,103 @@ export const registerTrainerSchema = z.object({
   name: z.string().trim().min(1).max(80),
 });
 
+/**
+ * An optional social URL: either an empty string (cleared) OR an absolute
+ * `https://` URL (any other scheme — `http:`, `javascript:`, etc. — is
+ * rejected). Trimmed; max 300 chars. Host is intentionally NOT restricted to
+ * specific domains in v1 (trainers legitimately use youtu.be, vanity hosts and
+ * regional Instagram hosts). The client additionally re-checks the `https`
+ * scheme before launching.
+ */
+const socialUrl = z
+  .string()
+  .trim()
+  .max(300)
+  .refine(
+    (value) => {
+      if (value.length === 0) return true;
+      let parsed: URL;
+      try {
+        parsed = new URL(value);
+      } catch {
+        return false;
+      }
+      return parsed.protocol === 'https:';
+    },
+    { message: 'Must be an absolute https:// URL.' },
+  )
+  .optional();
+
+/**
+ * Body schema for PATCH /api/trainer/profile (trainer-only, owner self-edit).
+ * Private fields: `mobile`, `dateOfBirth`, `heightCm`, `weightKg` — stored on
+ * trainers/{uid} but NEVER surfaced by the student-facing projection.
+ * Public fields: `experience`, `bio`, `youtubeUrl`, `instagramUrl`.
+ *
+ * The required set for `profileCompleted` (name, mobile, dateOfBirth, heightCm,
+ * weightKg, experience) is checked SEPARATELY by the service — in this base
+ * schema every field is optional so a partial edit of an already-saved profile
+ * never fails. In particular `experience` is optional (0..80, NOT `.min(1)`)
+ * here even though it is required for completeness.
+ */
+export const trainerProfileSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    mobile: z
+      .string()
+      .trim()
+      .regex(
+        /^[+]?[0-9 ()-]{7,20}$/u,
+        'Enter a valid phone number (7-20 digits, may start with +).',
+      )
+      .optional(),
+    dateOfBirth: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u, 'Use the format YYYY-MM-DD.')
+      .refine((value) => {
+        // A real calendar date (round-trips) in the past, with age >= 13.
+        const date = new Date(`${value}T00:00:00.000Z`);
+        if (Number.isNaN(date.getTime())) return false;
+        if (date.toISOString().slice(0, 10) !== value) return false;
+        const now = new Date();
+        if (date.getTime() >= now.getTime()) return false;
+        const thirteenthBirthday = new Date(
+          Date.UTC(
+            date.getUTCFullYear() + 13,
+            date.getUTCMonth(),
+            date.getUTCDate(),
+          ),
+        );
+        return thirteenthBirthday.getTime() <= now.getTime();
+      }, 'You must be at least 13 years old.')
+      .optional(),
+    heightCm: z.number().min(50).max(300).optional(),
+    weightKg: z.number().min(20).max(500).optional(),
+    experience: z.string().trim().max(80).optional(),
+    bio: z.string().trim().max(500).optional(),
+    youtubeUrl: socialUrl,
+    instagramUrl: socialUrl,
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, {
+    message: 'At least one profile field is required.',
+  });
+
+export type TrainerProfileInput = z.infer<typeof trainerProfileSchema>;
+
+/**
+ * Query schema for GET /api/student/trainer/preview?code= — a public-by-code
+ * read used by the QR scan / manual-entry connect flow. Trimmed + lowercased to
+ * match the normalized referral-code index key. NOT reusing linkTrainerSchema:
+ * that validates a BODY field named `referralCode`, this is a query `code`.
+ */
+export const trainerPreviewQuerySchema = z.object({
+  code: z.string().trim().toLowerCase().min(3).max(40),
+});
+
+export type TrainerPreviewQueryInput = z.infer<typeof trainerPreviewQuerySchema>;
+
 /** Path param for per-student trainer routes. */
 export const studentUidParamsSchema = z.object({
   studentUid: z.string().min(1).max(128),
