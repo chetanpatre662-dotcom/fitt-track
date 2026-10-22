@@ -1,0 +1,62 @@
+
+> fittrack-backend@1.0.0 test
+> vitest run
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mC:/Users/cheta/OneDrive/Desktop/fit/backend[39m
+
+ [32m✓[39m src/__tests__/workoutCalc.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m src/__tests__/nutritionService.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m src/__tests__/routineCalendarCalc.test.ts [2m([22m[2m39 tests[22m[2m)[22m[90m 87[2mms[22m[39m
+ [32m✓[39m src/__tests__/dropSet.test.ts [2m([22m[2m22 tests[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32m✓[39m src/__tests__/studentLeaveTrainer.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m src/__tests__/batch2Validators.test.ts [2m([22m[2m32 tests[22m[2m)[22m[90m 18[2mms[22m[39m
+ [32m✓[39m src/__tests__/dailyPlanService.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m src/__tests__/userRepository.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m src/__tests__/errorHandler422Diag.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m src/__tests__/aiConversationService.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m src/__tests__/dietPlanIsolation.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m src/__tests__/trainerRemoveStudent.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m src/__tests__/trainerListStudents.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m src/__tests__/sharingAuthoritative.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m src/__tests__/roleService.test.ts [2m([22m[2m9 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m src/__tests__/trainerService.test.ts [2m([22m[2m88 tests[22m[2m)[22m[90m 89[2mms[22m[39m
+ [32m✓[39m src/__tests__/firebaseBucket.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 35[2mms[22m[39m
+ [32m✓[39m src/__tests__/bestSet.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m src/__tests__/planModificationDetection.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m src/__tests__/prCalc.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/__tests__/fitnessCalc.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m src/__tests__/referralCode.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 47[2mms[22m[39m
+ [32m✓[39m src/__tests__/progressPhotoValidators.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 9[2mms[22m[39m
+ [32m✓[39m src/__tests__/nutritionCalc.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/__tests__/aiValidateExerciseIds.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+{"level":40,"time":"2026-10-21T18:11:46.617Z","err":{"type":"Error","message":"signing failed","stack":"Error: signing failed\n    at Object.getSignedUrl (C:\\Users\\cheta\\OneDrive\\Desktop\\fit\\backend\\src\\__tests__\\dietPlanSigningFailure.test.ts:6:15)\n    at DietPlanAssignmentService.resolve (C:\\Users\\cheta\\OneDrive\\Desktop\\fit\\backend\\src\\services\\dietPlanAssignmentService.ts:180:12)\n    at DietPlanAssignmentService.getForTrainer (C:\\Users\\cheta\\OneDrive\\Desktop\\fit\\backend\\src\\services\\dietPlanAssignmentService.ts:161:59)\n    at processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at C:\\Users\\cheta\\OneDrive\\Desktop\\fit\\backend\\src\\__tests__\\dietPlanSigningFailure.test.ts:46:18\n    at file:///C:/Users/cheta/OneDrive/Desktop/fit/backend/node_modules/@vitest/runner/dist/index.js:533:5\n    at runTest (file:///C:/Users/cheta/OneDrive/Desktop/fit/backend/node_modules/@vitest/runner/dist/index.js:1056:11)\n    at runSuite (file:///C:/Users/cheta/OneDrive/Desktop/fit/backend/node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runSuite (file:///C:/Users/cheta/OneDrive/Desktop/fit/backend/node_modules/@vitest/runner/dist/index.js:1205:15)\n    at runFiles (file:///C:/Users/cheta/OneDrive/Desktop/fit/backend/node_modules/@vitest/runner/dist/index.js:1262:5)"},"msg":"Failed to sign diet-plan image URL (continuing)"}
+ [32m✓[39m src/__tests__/dietPlanSigningFailure.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 27[2mms[22m[39m
+ [32m✓[39m src/__tests__/routineCalc.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/__tests__/streakCalc.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/__tests__/exerciseFilters.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 29[2mms[22m[39m
+ [32m✓[39m src/__tests__/exerciseCatalog.test.ts [2m([22m[2m46 tests[22m[2m)[22m[90m 82[2mms[22m[39m
+ [32m✓[39m src/__tests__/trainerWorkoutDetail.test.ts [2m([22m[2m9 tests[22m[2m)[22m[33m 430[2mms[22m[39m
+{"level":40,"time":"2026-10-21T18:11:49.586Z","tag":"TEMP-422-DIAG","method":"POST","path":"/echo","issues":[{"path":"email","code":"invalid_string","message":"Invalid email"},{"path":"age","code":"too_small","message":"Number must be greater than 0"}],"msg":"Request validation failed (422)"}
+ [32m✓[39m src/__tests__/middleware.test.ts [2m([22m[2m4 tests[22m[2m)[22m[33m 703[2mms[22m[39m
+   [33m[2m✓[22m[39m validate middleware[2m > [22mreturns 422 with details for invalid body [33m623[2mms[22m[39m
+{"level":40,"time":"2026-10-21T18:11:49.679Z","tag":"TEMP-422-DIAG","method":"POST","path":"/api/trainer/requests/batch/approve","issues":[{"path":"studentUids","code":"invalid_type","message":"Required","expected":"array","received":"undefined"}],"msg":"Request validation failed (422)"}
+ [32m✓[39m src/__tests__/trainerBatchRequests.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 769[2mms[22m[39m
+   [33m[2m✓[22m[39m batch route-collision guard[2m > [22mPOST /requests/batch/approve resolves to the BATCH handler (returns results/summary) [33m687[2mms[22m[39m
+{"level":40,"time":"2026-10-21T18:11:49.855Z","tag":"TEMP-422-DIAG","method":"GET","path":"/api/trainer/students/owned-stu/exercise","issues":[{"path":"exerciseId","code":"invalid_type","message":"Required","expected":"string","received":"undefined"}],"msg":"Request validation failed (422)"}
+{"level":40,"time":"2026-10-21T18:11:50.040Z","tag":"TEMP-422-DIAG","method":"POST","path":"/api/trainer/students/owned-stu/measurements","issues":[{"path":"heightCm","code":"too_big","message":"Number must be less than or equal to 260"}],"msg":"Request validation failed (422)"}
+{"level":40,"time":"2026-10-21T18:11:50.046Z","tag":"TEMP-422-DIAG","method":"POST","path":"/api/trainer/students/owned-stu/measurements","issues":[{"path":"weightKg","code":"too_small","message":"Number must be greater than or equal to 25"}],"msg":"Request validation failed (422)"}
+{"level":40,"time":"2026-10-21T18:11:50.410Z","tag":"TEMP-422-DIAG","method":"POST","path":"/api/trainer/students/owned-stu/diet-plan","issues":[{"path":"","code":"custom","message":"A diet plan needs text or an image."}],"msg":"Request validation failed (422)"}
+{"level":40,"time":"2026-10-21T18:11:50.572Z","tag":"TEMP-422-DIAG","method":"POST","path":"/api/trainer/students/owned-stu/workouts/assign","issues":[{"path":"exercises","code":"too_small","message":"Array must contain at least 1 element(s)"}],"msg":"Request validation failed (422)"}
+ [32m✓[39m src/__tests__/trainerRoutes.test.ts [2m([22m[2m102 tests[22m[2m)[22m[33m 1534[2mms[22m[39m
+{"level":30,"time":"2026-10-21T18:11:51.264Z","req":{"id":1,"method":"GET","url":"/health","query":{},"params":{},"headers":{"host":"127.0.0.1:64089","connection":"keep-alive","accept":"*/*","accept-language":"*","sec-fetch-mode":"cors","user-agent":"node","accept-encoding":"gzip, deflate"},"remoteAddress":"::ffff:127.0.0.1","remotePort":64090},"res":{"statusCode":200,"headers":{"content-security-policy":"default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests","cross-origin-opener-policy":"same-origin","cross-origin-resource-policy":"same-origin","origin-agent-cluster":"?1","referrer-policy":"no-referrer","strict-transport-security":"max-age=31536000; includeSubDomains","x-content-type-options":"nosniff","x-dns-prefetch-control":"off","x-download-options":"noopen","x-frame-options":"SAMEORIGIN","x-permitted-cross-domain-policies":"none","x-xss-protection":"0","vary":"Origin","access-control-allow-credentials":"true","content-type":"application/json; charset=utf-8","content-length":"158","etag":"W/\"9e-wUAZTRAidahFu1s1rzd/qZ9oMI4\""}},"responseTime":9,"msg":"request completed"}
+ [32m✓[39m src/__tests__/health.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 74[2mms[22m[39m
+ [32m✓[39m src/__tests__/aiHistory.test.ts [2m([22m[2m8 tests[22m[2m)[22m[33m 3538[2mms[22m[39m
+   [33m[2m✓[22m[39m AI history mapping (root-cause fix for the 500)[2m > [22mmaps an authenticated user WITH history correctly [33m3466[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m36 passed[39m[22m[90m (36)[39m
+[2m      Tests [22m [1m[32m517 passed[39m[22m[90m (517)[39m
+[2m   Start at [22m 23:41:42
+[2m   Duration [22m 10.35s[2m (transform 5.86s, setup 0ms, collect 48.01s, tests 7.65s, environment 10ms, prepare 17.32s)[22m
+

@@ -83,6 +83,22 @@ export const profileUpsertSchema = z.object({
     )
     .max(20)
     .optional(),
+  // Per-user overrides for the SHARED built-in meals (breakfast/lunch/dinner/
+  // snack). These are this user's own view and NEVER change the global meal set
+  // for other users. `hiddenDefaultMeals` lists the built-in meal wire names the
+  // user removed from their own list (reversible; logged food is untouched).
+  // `defaultMealNames` maps a built-in meal wire name to the user's display
+  // label. Both optional + backward compatible.
+  hiddenDefaultMeals: z
+    .array(z.enum(['breakfast', 'lunch', 'dinner', 'snack']))
+    .max(4)
+    .optional(),
+  defaultMealNames: z
+    .record(
+      z.enum(['breakfast', 'lunch', 'dinner', 'snack']),
+      z.string().min(1).max(60),
+    )
+    .optional(),
 });
 
 export type ProfileUpsertInput = z.infer<typeof profileUpsertSchema>;

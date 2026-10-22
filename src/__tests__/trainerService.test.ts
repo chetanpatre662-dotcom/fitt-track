@@ -780,6 +780,113 @@ describe('TrainerService per-category sharing gate (isShared via loaders)', () =
   });
 });
 
+describe('TrainerService.studentOverview body-metric gate (measurements)', () => {
+  /** A full profile with body metrics + a derived targets object. */
+  function seedProfile(sharing?: Record<string, boolean>, legacy?: boolean): void {
+    docs.set('users/stu-ov/profile/data', {
+      name: 'Nina',
+      photoUrl: 'http://img/nina',
+      goals: ['lose_weight'],
+      activityLevel: 'moderate',
+      workoutDaysPerWeek: 4,
+      preferredWorkoutTime: 'morning',
+      // Body metrics + their derivative targets (gated behind measurements).
+      weightKg: 60,
+      heightCm: 170,
+      dateOfBirth: '1995-05-01T00:00:00.000Z',
+      ageYears: 30,
+      gender: 'female',
+      targets: { calories: 1800, protein: 120, carbs: 180, fat: 60 },
+      // Non-allowlisted keys that must NEVER be forwarded.
+      units: 'metric',
+      fitnessLevel: 'intermediate',
+      ...(sharing ? { trainerSharing: sharing } : {}),
+      ...(legacy !== undefined ? { shareProgressWithTrainer: legacy } : {}),
+    });
+    docs.set('trainerLinks/stu-ov', { trainerId: TRAINER, status: 'active', createdAt: SERVER_TS });
+  }
+
+  it('measurements ON -> body metrics + targets present, measurementsShared true', async () => {
+    seedProfile({ measurements: true });
+    const res = await trainerService.studentOverview('stu-ov');
+    expect(res.measurementsShared).toBe(true);
+    const profile = res.profile as Record<string, unknown>;
+    expect(profile).toMatchObject({
+      weightKg: 60,
+      heightCm: 170,
+      dateOfBirth: '1995-05-01T00:00:00.000Z',
+      ageYears: 30,
+      gender: 'female',
+    });
+    expect(profile).toHaveProperty('targets');
+    // Always-present coaching context is there too.
+    expect(profile).toMatchObject({
+      name: 'Nina',
+      photoUrl: 'http://img/nina',
+      activityLevel: 'moderate',
+      workoutDaysPerWeek: 4,
+      preferredWorkoutTime: 'morning',
+    });
+    expect(profile.goals).toEqual(['lose_weight']);
+  });
+
+  it('measurements OFF -> body metrics + targets ABSENT, allowlist drops private keys', async () => {
+    seedProfile({ measurements: false });
+    const res = await trainerService.studentOverview('stu-ov');
+    expect(res.measurementsShared).toBe(false);
+    const profile = res.profile as Record<string, unknown>;
+    // Gated body metrics + derived targets are absent (not on the wire).
+    expect(profile).not.toHaveProperty('weightKg');
+    expect(profile).not.toHaveProperty('heightCm');
+    expect(profile).not.toHaveProperty('dateOfBirth');
+    expect(profile).not.toHaveProperty('ageYears');
+    expect(profile).not.toHaveProperty('gender');
+    expect(profile).not.toHaveProperty('targets');
+    // Non-allowlisted keys are never forwarded.
+    expect(profile).not.toHaveProperty('units');
+    expect(profile).not.toHaveProperty('fitnessLevel');
+    expect(profile).not.toHaveProperty('trainerSharing');
+    expect(profile).not.toHaveProperty('shareProgressWithTrainer');
+    // Always-present coaching context survives.
+    expect(profile).toMatchObject({
+      name: 'Nina',
+      photoUrl: 'http://img/nina',
+      activityLevel: 'moderate',
+      workoutDaysPerWeek: 4,
+      preferredWorkoutTime: 'morning',
+    });
+  });
+
+  it('sharing map entirely absent -> body metrics + targets hidden (fail-closed)', async () => {
+    seedProfile();
+    const res = await trainerService.studentOverview('stu-ov');
+    expect(res.measurementsShared).toBe(false);
+    const profile = res.profile as Record<string, unknown>;
+    expect(profile).not.toHaveProperty('weightKg');
+    expect(profile).not.toHaveProperty('targets');
+    expect(profile).toMatchObject({ name: 'Nina' });
+  });
+
+  it('legacy-only profile (shareProgressWithTrainer true, no granular map) -> body metrics + targets hidden', async () => {
+    seedProfile(undefined, true);
+    const res = await trainerService.studentOverview('stu-ov');
+    // measurements is not covered by the legacy flag (only progressPhotos is).
+    expect(res.measurementsShared).toBe(false);
+    const profile = res.profile as Record<string, unknown>;
+    expect(profile).not.toHaveProperty('weightKg');
+    expect(profile).not.toHaveProperty('targets');
+    expect(profile).toMatchObject({ name: 'Nina', photoUrl: 'http://img/nina' });
+  });
+
+  it('no profile -> profile null, measurementsShared false', async () => {
+    docs.set('trainerLinks/stu-np', { trainerId: TRAINER, status: 'active', createdAt: SERVER_TS });
+    const res = await trainerService.studentOverview('stu-np');
+    expect(res.profile).toBeNull();
+    expect(res.measurementsShared).toBe(false);
+    expect(res.trainerAssociation).toMatchObject({ trainerId: TRAINER, status: 'active' });
+  });
+});
+
 describe('StudentService.setSharing (granular)', () => {
   it('merges a one-key patch into an empty map and resolves all five keys', async () => {
     const result = await studentService.setSharing('stu-set', { nutrition: true });

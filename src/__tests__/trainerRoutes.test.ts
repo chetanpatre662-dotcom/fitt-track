@@ -236,6 +236,103 @@ describe('/api/trainer authorization matrix', () => {
   });
 });
 
+describe('/api/trainer/students/:uid/overview body-metric gate (measurements)', () => {
+  /** owned-stu is active with trainer-1 (seeded by the top-level beforeEach). */
+  function seedBodyProfile(measurements: boolean): void {
+    docs.set('users/owned-stu/profile/data', {
+      name: 'Owned',
+      photoUrl: 'http://img/owned',
+      goals: ['gain_muscle'],
+      activityLevel: 'high',
+      weightKg: 82,
+      heightCm: 180,
+      dateOfBirth: '1990-01-01T00:00:00.000Z',
+      ageYears: 35,
+      gender: 'male',
+      targets: { calories: 2800, protein: 180 },
+      units: 'metric',
+      fitnessLevel: 'advanced',
+      trainerSharing: { measurements },
+    });
+  }
+
+  async function overviewProfile(url: string): Promise<Record<string, unknown>> {
+    const res = await fetch(`${url}/api/trainer/students/owned-stu/overview`, {
+      headers: auth('trainer-token'),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      data: { overview: { profile: Record<string, unknown>; measurementsShared: boolean } };
+    };
+    return body.data.overview as unknown as Record<string, unknown>;
+  }
+
+  it('measurements OFF -> body metrics + targets NOT in the JSON (direct API read blocked)', async () => {
+    seedBodyProfile(false);
+    const { url, close } = serve();
+    try {
+      const overview = await overviewProfile(url);
+      expect(overview.measurementsShared).toBe(false);
+      const profile = overview.profile as Record<string, unknown>;
+      expect(profile).not.toHaveProperty('weightKg');
+      expect(profile).not.toHaveProperty('heightCm');
+      expect(profile).not.toHaveProperty('dateOfBirth');
+      expect(profile).not.toHaveProperty('gender');
+      expect(profile).not.toHaveProperty('targets');
+      // Never leak the private sharing map / non-allowlisted keys over the wire.
+      expect(profile).not.toHaveProperty('trainerSharing');
+      expect(profile).not.toHaveProperty('units');
+      // Coaching identity is still present.
+      expect(profile).toMatchObject({ name: 'Owned', photoUrl: 'http://img/owned' });
+    } finally {
+      close();
+    }
+  });
+
+  it('measurements ON -> body metrics + targets ARE in the JSON', async () => {
+    seedBodyProfile(true);
+    const { url, close } = serve();
+    try {
+      const overview = await overviewProfile(url);
+      expect(overview.measurementsShared).toBe(true);
+      const profile = overview.profile as Record<string, unknown>;
+      expect(profile).toMatchObject({ weightKg: 82, heightCm: 180, gender: 'male' });
+      expect(profile).toHaveProperty('targets');
+    } finally {
+      close();
+    }
+  });
+
+  it('turning measurements back ON restores the fields', async () => {
+    seedBodyProfile(false);
+    const { url, close } = serve();
+    try {
+      let profile = (await overviewProfile(url)).profile as Record<string, unknown>;
+      expect(profile).not.toHaveProperty('weightKg');
+
+      seedBodyProfile(true);
+      profile = (await overviewProfile(url)).profile as Record<string, unknown>;
+      expect(profile).toMatchObject({ weightKg: 82 });
+      expect(profile).toHaveProperty('targets');
+    } finally {
+      close();
+    }
+  });
+
+  it("a non-owning trainer still gets 404 (ownership before the gate)", async () => {
+    seedBodyProfile(true);
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/students/other-stu/overview`, {
+        headers: auth('trainer-token'),
+      });
+      expect(res.status).toBe(404);
+    } finally {
+      close();
+    }
+  });
+});
+
 describe('/api/trainer/referral-code endpoints', () => {
   it('401 unauth / 403 student / 200 trainer on GET', async () => {
     const { url, close } = serve();

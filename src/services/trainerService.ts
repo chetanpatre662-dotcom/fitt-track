@@ -713,14 +713,66 @@ export class TrainerService {
 
   // --- Per-student detail views (authorization asserted by caller first) ---
 
+  /**
+   * A student's profile + trainer-association for the Overview tab.
+   *
+   * The returned `profile` is a STRICT ALLOWLIST projection — a new object built
+   * only from the enumerated keys below; no other key of the raw
+   * users/{uid}/profile/data document is ever forwarded. This matters because
+   * the profile persists more than the display fields (a derived `targets`
+   * object, `units`, `fitnessLevel`, the private `trainerSharing` map, the
+   * legacy `shareProgressWithTrainer`). A redaction that only stripped named
+   * keys would leak those; the allowlist drops everything unnamed by
+   * construction.
+   *
+   * Body metrics (`weightKg`/`heightCm`/`dateOfBirth`/`ageYears`/`gender`) AND
+   * their derivative `targets` object are gated behind the `measurements`
+   * sharing category (fail-closed: absent/malformed map -> not shared), so a
+   * direct API call cannot read them when the student turned measurements off.
+   * `measurementsShared` lets the trainer UI show a truthful "Hidden by
+   * student" state. Ownership (assertTrainerOwnsStudent, active-link 404) is
+   * unchanged and still asserted by the controller BEFORE this runs.
+   */
   async studentOverview(studentUid: string): Promise<Record<string, unknown>> {
     const [profile, link] = await Promise.all([
       profileRepository.get(studentUid),
       trainerLinkRepository.get(studentUid),
     ]);
+
+    const measurementsShared = this.isShared(profile, 'measurements');
+
+    // Always-authorized coaching identity/context (no toggle owns these).
+    const base = profile
+      ? {
+          name: profile.name ?? null,
+          photoUrl: profile.photoUrl ?? null,
+          goals: profile.goals ?? [],
+          activityLevel: profile.activityLevel ?? null,
+          workoutDaysPerWeek: profile.workoutDaysPerWeek ?? null,
+          preferredWorkoutTime: profile.preferredWorkoutTime ?? null,
+        }
+      : null;
+
+    // Gated body metrics + their derivative `targets` — present ONLY when the
+    // measurements category is shared.
+    const gated =
+      profile && measurementsShared
+        ? {
+            weightKg: profile.weightKg ?? null,
+            heightCm: profile.heightCm ?? null,
+            dateOfBirth: profile.dateOfBirth ?? null,
+            ageYears: profile.ageYears ?? null,
+            gender: profile.gender ?? null,
+            targets: profile.targets ?? null,
+          }
+        : {};
+
+    const projected = profile ? { ...base, ...gated } : null;
+
     return {
       studentUid,
-      profile: profile ?? null,
+      profile: projected,
+      measurementsShared,
       trainerAssociation: link
         ? { trainerId: link.trainerId, status: link.status, linkedAt: toIso(link.createdAt) }
         : null,
