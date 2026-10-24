@@ -70,15 +70,25 @@ export async function chat(req: Request, res: Response): Promise<void> {
   const currentPlan = await dailyPlanService.get(uid).catch(() => null);
   const todaysPlan = await dailyPlanService.summarizeForChat(uid).catch(() => null);
 
-  const reply = await aiService.chat(uid, message, history, todaysPlan);
+  // Request-scoped deadline: if the client disconnects, abort both Gemini calls
+  // so they stop early instead of hanging the request to the full timeout.
+  const controller = new AbortController();
+  req.on('close', () => controller.abort());
 
-  // Detect (but DO NOT apply) a workout-plan modification request. When found,
-  // we return a structured proposal the client confirms before persisting via
-  // the existing daily-plan update endpoint — chat never silently mutates the
-  // plan. Best-effort: failure falls back to a normal chat reply.
-  const detection = await aiService
-    .detectPlanModification(message, (currentPlan?.muscleGroups as string[] | undefined) ?? [])
-    .catch(() => ({ isModification: false, muscleGroups: [] as string[] }));
+  // Run the reply and the (best-effort) modification detection CONCURRENTLY
+  // under one deadline instead of serially — this is the primary cause of the
+  // ~30s hang. Detection keeps its own safe fallback so a detection failure
+  // degrades to a normal chat reply rather than failing the response.
+  const [reply, detection] = await Promise.all([
+    aiService.chat(uid, message, history, todaysPlan, controller.signal),
+    aiService
+      .detectPlanModification(
+        message,
+        (currentPlan?.muscleGroups as string[] | undefined) ?? [],
+        controller.signal,
+      )
+      .catch(() => ({ isModification: false, muscleGroups: [] as string[] })),
+  ]);
 
   const proposedPlanChange = detection.isModification
     ? { muscleGroups: detection.muscleGroups }

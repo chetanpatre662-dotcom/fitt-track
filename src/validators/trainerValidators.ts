@@ -113,10 +113,7 @@ export const trainerProfileSchema = z
     mobile: z
       .string()
       .trim()
-      .regex(
-        /^[+]?[0-9 ()-]{7,20}$/u,
-        'Enter a valid phone number (7-20 digits, may start with +).',
-      )
+      .regex(/^\d{10}$/u, 'Enter a 10-digit mobile number.')
       .optional(),
     dateOfBirth: z
       .string()

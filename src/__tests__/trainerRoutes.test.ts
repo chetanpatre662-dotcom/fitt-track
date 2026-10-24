@@ -273,7 +273,7 @@ describe('PATCH /api/trainer/profile (owner self-edit)', () => {
         headers: { ...auth('trainer-token'), 'content-type': 'application/json' },
         body: JSON.stringify({
           name: 'Alex Carter',
-          mobile: '+1 555 0100',
+          mobile: '5550100123',
           dateOfBirth: '1990-05-01',
           heightCm: 182,
           weightKg: 80,
@@ -287,7 +287,7 @@ describe('PATCH /api/trainer/profile (owner self-edit)', () => {
       };
       expect(body.data.profile.profileCompleted).toBe(true);
       expect(docs.get('trainers/trainer-1')).toMatchObject({
-        mobile: '+1 555 0100',
+        mobile: '5550100123',
         profileCompleted: true,
       });
     } finally {

@@ -898,7 +898,7 @@ describe('StudentService.previewByCode (public-by-code preview)', () => {
 describe('trainerProfileSchema validation', () => {
   const valid = {
     name: 'Alex',
-    mobile: '+1 555 0100',
+    mobile: '5550100123',
     dateOfBirth: '1990-05-01',
     heightCm: 182,
     weightKg: 80,

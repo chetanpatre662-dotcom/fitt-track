@@ -255,6 +255,7 @@ export class AiService {
     message: string,
     history: Array<{ role: string; text: string }> = [],
     todaysPlan?: string | null,
+    signal?: AbortSignal,
   ) {
     const [user, workouts, nutrition] = await Promise.all([
       aiContextService.userContext(uid),
@@ -281,7 +282,7 @@ export class AiService {
       .filter(Boolean)
       .join('\n\n');
 
-    return generateText({ systemInstruction: SAFETY_SYSTEM_PROMPT, prompt, temperature: 0.85 });
+    return generateText({ systemInstruction: SAFETY_SYSTEM_PROMPT, prompt, temperature: 0.85, signal });
   }
 
   /**
@@ -296,6 +297,7 @@ export class AiService {
   async detectPlanModification(
     message: string,
     currentMuscleGroups: string[] = [],
+    signal?: AbortSignal,
   ): Promise<{ isModification: boolean; muscleGroups: MuscleGroup[] }> {
     const allowed = MUSCLE_GROUPS.join(', ');
     const prompt = [
@@ -314,6 +316,7 @@ export class AiService {
         prompt,
         responseSchema: geminiSchemas.planModification,
         temperature: 0,
+        signal,
       });
       const parsed = planModificationSchema.parse(raw);
       // Strictly keep only valid muscle groups; drop anything invented.

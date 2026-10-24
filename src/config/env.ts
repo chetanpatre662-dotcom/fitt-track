@@ -21,8 +21,15 @@ const envSchema = z.object({
   FIREBASE_STORAGE_BUCKET: z.string().min(1).default('fittness-ba0ac.firebasestorage.app'),
 
   GEMINI_API_KEY: z.string().optional(),
- GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
-GEMINI_MODEL_FALLBACK: z.string().default('gemini-3.5-flash-lite'),
+  GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
+  GEMINI_MODEL_FALLBACK: z.string().default('gemini-3.5-flash-lite'),
+
+  // Gemini reliability knobs (bounded retry + per-call timeout). Safe defaults
+  // so the backend boots without any extra env; all are env-overridable.
+  GEMINI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
+  GEMINI_RETRY_BASE_MS: z.coerce.number().int().positive().default(400),
+  GEMINI_RETRY_MAX_ELAPSED_MS: z.coerce.number().int().positive().default(12_000),
+  GEMINI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
