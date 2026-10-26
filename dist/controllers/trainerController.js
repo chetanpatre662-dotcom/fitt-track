@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getProfile = getProfile;
+exports.updateProfile = updateProfile;
 exports.listStudents = listStudents;
 exports.studentOverview = studentOverview;
 exports.studentWorkouts = studentWorkouts;
@@ -44,6 +45,17 @@ function todayKey() {
 async function getProfile(req, res) {
     const trainerId = (0, auth_js_1.requireUid)(req);
     const profile = await trainerService_js_1.trainerService.getProfile(trainerId);
+    (0, http_js_1.ok)(res, { profile });
+}
+/**
+ * PATCH /api/trainer/profile — owner self-edit of the trainer profile. The body
+ * is validated by trainerProfileSchema; the service merges the patch onto
+ * trainers/{uid}, recomputes `profileCompleted`, and returns the fresh profile.
+ */
+async function updateProfile(req, res) {
+    const trainerId = (0, auth_js_1.requireUid)(req);
+    const patch = req.body;
+    const profile = await trainerService_js_1.trainerService.updateTrainerProfile(trainerId, patch);
     (0, http_js_1.ok)(res, { profile });
 }
 async function listStudents(req, res) {

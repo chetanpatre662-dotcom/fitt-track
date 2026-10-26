@@ -47,6 +47,7 @@ const router = (0, express_1.Router)();
 router.use(auth_js_1.authenticate);
 router.use(role_js_1.requireTrainer);
 router.get('/profile', (0, http_js_1.asyncHandler)(c.getProfile));
+router.patch('/profile', (0, validate_js_1.validate)({ body: trainerValidators_js_1.trainerProfileSchema }), (0, http_js_1.asyncHandler)(c.updateProfile));
 router.get('/students', (0, http_js_1.asyncHandler)(c.listStudents));
 // Referral-code management (self-service, trainer-only).
 router.get('/referral-code/availability', (0, validate_js_1.validate)({ query: trainerValidators_js_1.availabilityQuerySchema }), (0, http_js_1.asyncHandler)(c.checkReferralCodeAvailability));

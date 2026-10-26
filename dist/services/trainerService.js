@@ -493,6 +493,61 @@ class TrainerService {
         const activeStudents = await trainerRepository_js_1.trainerRepository.countActiveStudents(trainerId);
         return { ...trainer, totalStudents: activeStudents };
     }
+    /**
+     * Applies a validated partial trainer-profile patch to trainers/{uid} and
+     * recomputes `profileCompleted`. Additive + backward-compatible: only the
+     * provided keys are written (merge), the canonical `trainerId`/`userId` and
+     * `role:'trainer'` identity are preserved, and no second trainer record is
+     * created. `profileCompleted` is set true only when ALL required fields —
+     * name, mobile, dateOfBirth, heightCm, weightKg, experience — are present and
+     * non-empty on the MERGED document (existing stored values + this patch), so
+     * a partial edit never silently drops completeness. Returns the fresh profile
+     * (same shape as getProfile) for edit prefill.
+     */
+    async updateTrainerProfile(trainerId, patch) {
+        const now = firebase_js_1.admin.firestore.FieldValue.serverTimestamp();
+        const existing = (await trainerRepository_js_1.trainerRepository.get(trainerId)) ?? {};
+        // The merged view used to decide completeness (stored values overlaid by
+        // this patch). Only keys explicitly present in the patch are considered
+        // changed; `undefined` patch keys fall back to the stored value.
+        const merged = { ...existing };
+        for (const [key, value] of Object.entries(patch)) {
+            if (typeof value !== 'undefined')
+                merged[key] = value;
+        }
+        const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
+        const hasNumber = (value) => typeof value === 'number' && Number.isFinite(value);
+        const profileCompleted = hasText(merged.name) &&
+            hasText(merged.mobile) &&
+            hasText(merged.dateOfBirth) &&
+            hasNumber(merged.heightCm) &&
+            hasNumber(merged.weightKg) &&
+            hasText(merged.experience);
+        const update = {
+            trainerId,
+            userId: trainerId,
+            role: 'trainer',
+            profileCompleted,
+            updatedAt: now,
+        };
+        // Keys whose empty-string value means "cleared" — store `null` rather than
+        // `''` so the student projection's conditional-append (which omits null)
+        // honors the "omit when absent" contract instead of surfacing an empty
+        // string over the wire.
+        const clearToNull = new Set(['youtubeUrl', 'instagramUrl']);
+        for (const [key, value] of Object.entries(patch)) {
+            if (typeof value === 'undefined')
+                continue;
+            if (clearToNull.has(key) && typeof value === 'string' && value.trim().length === 0) {
+                update[key] = null;
+            }
+            else {
+                update[key] = value;
+            }
+        }
+        await trainerRepository_js_1.trainerRepository.upsert(trainerId, update);
+        return this.getProfile(trainerId);
+    }
     /** Per-student summary cards for the dashboard student list. */
     async listStudents(trainerId) {
         const links = await trainerLinkRepository_js_1.trainerLinkRepository.listByTrainer(trainerId);
@@ -531,14 +586,60 @@ class TrainerService {
         return summaries;
     }
     // --- Per-student detail views (authorization asserted by caller first) ---
+    /**
+     * A student's profile + trainer-association for the Overview tab.
+     *
+     * The returned `profile` is a STRICT ALLOWLIST projection — a new object built
+     * only from the enumerated keys below; no other key of the raw
+     * users/{uid}/profile/data document is ever forwarded. This matters because
+     * the profile persists more than the display fields (a derived `targets`
+     * object, `units`, `fitnessLevel`, the private `trainerSharing` map, the
+     * legacy `shareProgressWithTrainer`). A redaction that only stripped named
+     * keys would leak those; the allowlist drops everything unnamed by
+     * construction.
+     *
+     * Body metrics (`weightKg`/`heightCm`/`dateOfBirth`/`ageYears`/`gender`) AND
+     * their derivative `targets` object are gated behind the `measurements`
+     * sharing category (fail-closed: absent/malformed map -> not shared), so a
+     * direct API call cannot read them when the student turned measurements off.
+     * `measurementsShared` lets the trainer UI show a truthful "Hidden by
+     * student" state. Ownership (assertTrainerOwnsStudent, active-link 404) is
+     * unchanged and still asserted by the controller BEFORE this runs.
+     */
     async studentOverview(studentUid) {
         const [profile, link] = await Promise.all([
             profileRepository_js_1.profileRepository.get(studentUid),
             trainerLinkRepository_js_1.trainerLinkRepository.get(studentUid),
         ]);
+        const measurementsShared = this.isShared(profile, 'measurements');
+        // Always-authorized coaching identity/context (no toggle owns these).
+        const base = profile
+            ? {
+                name: profile.name ?? null,
+                photoUrl: profile.photoUrl ?? null,
+                goals: profile.goals ?? [],
+                activityLevel: profile.activityLevel ?? null,
+                workoutDaysPerWeek: profile.workoutDaysPerWeek ?? null,
+                preferredWorkoutTime: profile.preferredWorkoutTime ?? null,
+            }
+            : null;
+        // Gated body metrics + their derivative `targets` — present ONLY when the
+        // measurements category is shared.
+        const gated = profile && measurementsShared
+            ? {
+                weightKg: profile.weightKg ?? null,
+                heightCm: profile.heightCm ?? null,
+                dateOfBirth: profile.dateOfBirth ?? null,
+                ageYears: profile.ageYears ?? null,
+                gender: profile.gender ?? null,
+                targets: profile.targets ?? null,
+            }
+            : {};
+        const projected = profile ? { ...base, ...gated } : null;
         return {
             studentUid,
-            profile: profile ?? null,
+            profile: projected,
+            measurementsShared,
             trainerAssociation: link
                 ? { trainerId: link.trainerId, status: link.status, linkedAt: toIso(link.createdAt) }
                 : null,

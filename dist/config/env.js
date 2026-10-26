@@ -23,6 +23,12 @@ const envSchema = zod_1.z.object({
     GEMINI_API_KEY: zod_1.z.string().optional(),
     GEMINI_MODEL: zod_1.z.string().default('gemini-3.5-flash'),
     GEMINI_MODEL_FALLBACK: zod_1.z.string().default('gemini-3.5-flash-lite'),
+    // Gemini reliability knobs (bounded retry + per-call timeout). Safe defaults
+    // so the backend boots without any extra env; all are env-overridable.
+    GEMINI_MAX_RETRIES: zod_1.z.coerce.number().int().min(0).default(2),
+    GEMINI_RETRY_BASE_MS: zod_1.z.coerce.number().int().positive().default(400),
+    GEMINI_RETRY_MAX_ELAPSED_MS: zod_1.z.coerce.number().int().positive().default(12_000),
+    GEMINI_REQUEST_TIMEOUT_MS: zod_1.z.coerce.number().int().positive().default(20_000),
     RATE_LIMIT_WINDOW_MS: zod_1.z.coerce.number().int().positive().default(900_000),
     RATE_LIMIT_MAX: zod_1.z.coerce.number().int().positive().default(300),
     AI_RATE_LIMIT_WINDOW_MS: zod_1.z.coerce.number().int().positive().default(60_000),

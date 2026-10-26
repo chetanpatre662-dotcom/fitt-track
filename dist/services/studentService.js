@@ -5,6 +5,8 @@ const firebase_js_1 = require("../config/firebase.js");
 const trainerLinkRepository_js_1 = require("../repositories/trainerLinkRepository.js");
 const trainerRepository_js_1 = require("../repositories/trainerRepository.js");
 const profileRepository_js_1 = require("../repositories/profileRepository.js");
+const roleService_js_1 = require("./roleService.js");
+const referralCode_js_1 = require("../utils/referralCode.js");
 const trainerValidators_js_1 = require("../validators/trainerValidators.js");
 /**
  * Resolves the student's stored sharing state into an always-present five-key
@@ -79,7 +81,64 @@ class StudentService {
         if (typeof trainer.bio !== 'undefined' && trainer.bio !== null) {
             card.bio = trainer.bio;
         }
+        // Public social links, surfaced with the SAME conditional-append contract
+        // as experience/bio. This `card` is a strict allow-list: it reads only the
+        // specific public keys and NEVER spreads the trainer doc, so the private
+        // profile fields (mobile, dateOfBirth, heightCm, weightKg, email) are
+        // omitted by construction and can never leak to a student (Req 10 / privacy
+        // invariant, enforced server-side).
+        if (typeof trainer.youtubeUrl !== 'undefined' && trainer.youtubeUrl !== null) {
+            card.youtubeUrl = trainer.youtubeUrl;
+        }
+        if (typeof trainer.instagramUrl !== 'undefined' && trainer.instagramUrl !== null) {
+            card.instagramUrl = trainer.instagramUrl;
+        }
         return { trainer: card };
+    }
+    /**
+     * Public-by-code preview for the QR scan / manual-entry connect flow
+     * (GET /api/student/trainer/preview?code=). Resolves the referral code via
+     * the index doc and the SAME role/status checks as requestTrainer, then
+     * returns ONLY the public fields — the identical conditional-append contract
+     * as getTrainer (optional public fields omitted when absent; private fields
+     * never read). It performs NO linking.
+     *
+     * Anti-enumeration: a well-formed but unknown/inactive/non-trainer code
+     * resolves to { found: false } (the route still returns 200) rather than
+     * leaking whether a code exists. A valid active code returns
+     * { found: true, trainer: { name, photoUrl, experience?, bio?, youtubeUrl?,
+     * instagramUrl? } } even when the trainer's public profile is incomplete
+     * (name is always present; the UI may still send a request).
+     */
+    async previewByCode(code) {
+        const codeLower = (0, referralCode_js_1.normalize)(code);
+        const codeDoc = await trainerRepository_js_1.trainerRepository.getByReferralCodeDoc(codeLower);
+        if (!codeDoc || !codeDoc.active)
+            return { found: false };
+        const trainerId = codeDoc.trainerId;
+        const trainer = await trainerRepository_js_1.trainerRepository.get(trainerId);
+        const resolvedRole = await roleService_js_1.roleService.resolveRole(trainerId);
+        if (resolvedRole !== 'trainer' || !trainer || trainer.status !== 'active') {
+            return { found: false };
+        }
+        // Public allow-list (never spreads the doc; private fields never read).
+        const card = {
+            name: trainer.name ?? null,
+            photoUrl: trainer.photoUrl ?? null,
+        };
+        if (typeof trainer.experience !== 'undefined' && trainer.experience !== null) {
+            card.experience = trainer.experience;
+        }
+        if (typeof trainer.bio !== 'undefined' && trainer.bio !== null) {
+            card.bio = trainer.bio;
+        }
+        if (typeof trainer.youtubeUrl !== 'undefined' && trainer.youtubeUrl !== null) {
+            card.youtubeUrl = trainer.youtubeUrl;
+        }
+        if (typeof trainer.instagramUrl !== 'undefined' && trainer.instagramUrl !== null) {
+            card.instagramUrl = trainer.instagramUrl;
+        }
+        return { found: true, trainer: card };
     }
     /**
      * Student-initiated "Leave Trainer" (§4): the student-side mirror of

@@ -44,6 +44,10 @@ const router = (0, express_1.Router)();
 // read their own trainer card and toggle their own sharing preference.
 router.use(auth_js_1.authenticate);
 router.get('/trainer', (0, http_js_1.asyncHandler)(c.getTrainer));
+// Public-by-code trainer preview (QR scan / manual entry). A literal path, so
+// it does not collide with /trainer or /trainer/sharing. Behind `authenticate`
+// only — it is a student action and must NOT sit behind requireTrainer.
+router.get('/trainer/preview', (0, validate_js_1.validate)({ query: trainerValidators_js_1.trainerPreviewQuerySchema }), (0, http_js_1.asyncHandler)(c.previewTrainer));
 // Student-initiated leave/withdraw: keyed by the authenticated uid, so there is
 // no request body and no validate() middleware.
 router.delete('/trainer', (0, http_js_1.asyncHandler)(c.leaveTrainer));

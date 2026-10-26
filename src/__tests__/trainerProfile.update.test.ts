@@ -234,3 +234,99 @@ describe('PATCH /api/trainer/profile — 10-digit mobile contract (FEAT-001)', (
     }
   });
 });
+
+/**
+ * Route-registration regression guard (root cause of the shipped 404 "Route not
+ * found: PATCH /api/trainer/profile"). The handler lived in src/ but the tracked
+ * compiled dist/ was stale and omitted it, so the deployed server fell through
+ * to the not-found handler. These cases pin the method+path to the trainer
+ * router and the exact nine-field onboarding body the Flutter Step-2 Save sends.
+ */
+describe('PATCH /api/trainer/profile — route registration + onboarding body', () => {
+  // The verbatim nine-field payload the frontend builds in public_profile_step.
+  const onboardingBody = {
+    name: 'Alex Carter',
+    mobile: '9876543210',
+    dateOfBirth: '1990-05-01',
+    heightCm: 182,
+    weightKg: 80,
+    experience: '5 years',
+    bio: 'Coaching since 2015.',
+    youtubeUrl: '',
+    instagramUrl: '',
+  };
+
+  it('the PATCH /profile route IS registered (a valid call is NOT a 404/405)', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await patch(url, 'trainer-a-token', onboardingBody);
+      // The precise failure this fix addresses: a missing route yields 404 and
+      // the not-found body. Assert we are neither 404 (unrouted) nor 405.
+      expect(res.status).not.toBe(404);
+      expect(res.status).not.toBe(405);
+      expect(res.status).toBe(200);
+    } finally {
+      close();
+    }
+  });
+
+  it('accepts the full nine-field onboarding body with BLANK optional social URLs', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await patch(url, 'trainer-a-token', onboardingBody);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as {
+        data: { profile: { profileCompleted: boolean } };
+      };
+      expect(body.data.profile.profileCompleted).toBe(true);
+      // experience + bio persisted; blank optional URLs are stored as null
+      // (the service's intentional "cleared" representation so the student
+      // projection omits them) — accepted without a spurious validation error.
+      expect(docs.get('trainers/trainer-a')).toMatchObject({
+        experience: '5 years',
+        bio: 'Coaching since 2015.',
+        youtubeUrl: null,
+        instagramUrl: null,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('a later partial patch PRESERVES unrelated fields (merge, no null-overwrite)', async () => {
+    const { url, close } = serve();
+    try {
+      const first = await patch(url, 'trainer-a-token', onboardingBody);
+      expect(first.status).toBe(200);
+      // Edit only the bio; everything else must survive the merge.
+      const second = await patch(url, 'trainer-a-token', { bio: 'Updated bio.' });
+      expect(second.status).toBe(200);
+      expect(docs.get('trainers/trainer-a')).toMatchObject({
+        mobile: '9876543210',
+        experience: '5 years',
+        bio: 'Updated bio.',
+        heightCm: 182,
+        weightKg: 80,
+        profileCompleted: true,
+      });
+    } finally {
+      close();
+    }
+  });
+
+  it('an unsupported method on the same path does NOT succeed (POST is unrouted)', async () => {
+    const { url, close } = serve();
+    try {
+      const res = await fetch(`${url}/api/trainer/profile`, {
+        method: 'POST',
+        headers: { ...auth('trainer-a-token'), 'content-type': 'application/json' },
+        body: JSON.stringify(onboardingBody),
+      });
+      // No POST handler is registered: it must not quietly succeed.
+      expect(res.status).not.toBe(200);
+      expect(res.status).toBe(404);
+    } finally {
+      close();
+    }
+  });
+});

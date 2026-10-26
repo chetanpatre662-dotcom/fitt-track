@@ -217,7 +217,7 @@ class AiService {
      * plan for "what should I train today?" rather than inventing a new one, so
      * Chat and the Plans screen never disagree.
      */
-    async chat(uid, message, history = [], todaysPlan) {
+    async chat(uid, message, history = [], todaysPlan, signal) {
         const [user, workouts, nutrition] = await Promise.all([
             aiContextService_js_1.aiContextService.userContext(uid),
             aiContextService_js_1.aiContextService.recentWorkouts(uid, 3),
@@ -240,7 +240,7 @@ class AiService {
         ]
             .filter(Boolean)
             .join('\n\n');
-        return (0, geminiClient_js_1.generateText)({ systemInstruction: prompts_js_1.SAFETY_SYSTEM_PROMPT, prompt, temperature: 0.85 });
+        return (0, geminiClient_js_1.generateText)({ systemInstruction: prompts_js_1.SAFETY_SYSTEM_PROMPT, prompt, temperature: 0.85, signal });
     }
     /**
      * Detects whether a chat message is asking to CHANGE today's workout plan and,
@@ -251,7 +251,7 @@ class AiService {
      * Returns { isModification: false } on any ambiguity or AI error — i.e. it
      * fails safe toward "not a modification" so normal chat is never disrupted.
      */
-    async detectPlanModification(message, currentMuscleGroups = []) {
+    async detectPlanModification(message, currentMuscleGroups = [], signal) {
         const allowed = domain_js_1.MUSCLE_GROUPS.join(', ');
         const prompt = [
             'Decide if the user is asking to CHANGE/replace today\'s workout plan (the muscle groups to train).',
@@ -268,6 +268,7 @@ class AiService {
                 prompt,
                 responseSchema: schemas_js_1.geminiSchemas.planModification,
                 temperature: 0,
+                signal,
             });
             const parsed = schemas_js_1.planModificationSchema.parse(raw);
             // Strictly keep only valid muscle groups; drop anything invented.

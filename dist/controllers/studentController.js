@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getTrainer = getTrainer;
+exports.previewTrainer = previewTrainer;
 exports.leaveTrainer = leaveTrainer;
 exports.connectTrainer = connectTrainer;
 exports.setSharing = setSharing;
@@ -18,6 +19,19 @@ const trainerValidators_js_1 = require("../validators/trainerValidators.js");
 async function getTrainer(req, res) {
     const uid = (0, auth_js_1.requireUid)(req);
     const result = await studentService_js_1.studentService.getTrainer(uid);
+    (0, http_js_1.ok)(res, result);
+}
+/**
+ * GET /api/student/trainer/preview?code= — resolve a trainer's PUBLIC profile
+ * by referral code before sending a connect request (QR scan / manual entry).
+ * Behind `authenticate` only (a student action). Returns 200 { found:false }
+ * for a well-formed unknown/inactive code (anti-enumeration), and
+ * 200 { found:true, trainer:{...public fields} } for a valid active code. A
+ * malformed code fails the query validator and yields a centralized 422.
+ */
+async function previewTrainer(req, res) {
+    const { code } = req.query;
+    const result = await studentService_js_1.studentService.previewByCode(code);
     (0, http_js_1.ok)(res, result);
 }
 /**
